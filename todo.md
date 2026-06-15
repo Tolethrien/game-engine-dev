@@ -1,0 +1,1 @@
+- wpierw przygotuj wszystko z oknem jak resize itp
