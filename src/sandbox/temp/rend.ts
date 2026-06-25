@@ -11,6 +11,6 @@ export default class Rend extends System {
     });
   }
   public sendMsg() {
-    console.log("rend msg");
+    // console.log("rend msg");
   }
 }

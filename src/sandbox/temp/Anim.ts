@@ -1,8 +1,8 @@
 import System, { InternalDSProps } from "@/core/dogma/system";
 
 export default class Anim extends System {
-  private test = 1;
-  constructor(internal: InternalDSProps, obj: { frame: number }) {
+  declare private test: Set<Symbol>;
+  constructor(internal: InternalDSProps) {
     super(internal);
   }
   public onStart(): void {
@@ -13,6 +13,9 @@ export default class Anim extends System {
       callback: () => this.sendMsg(),
       before: ["Rend"],
     });
+    this.unSubscribeFromPhase("update");
+    const msg = this.query(["Move", "Trans"]);
+    this.test = msg;
     // this.subscribeToPhase("preUpdate", () => this.sendMsgPre());
     // this.subscribeToPhase("fixedUpdate", () => this.sendMsgF());
     // this.setActive(false);
@@ -21,7 +24,8 @@ export default class Anim extends System {
     console.log("system removed");
   }
   public sendMsg() {
-    console.log("animMSg");
+    // console.log(this.test);
+    // console.log(this.getComponentList("Move"));
   }
   public sendMsgPre() {
     console.log("pre", this.test);

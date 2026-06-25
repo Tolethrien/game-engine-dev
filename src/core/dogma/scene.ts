@@ -3,6 +3,7 @@ import DogmaComponent from "./component";
 import DogmaSystem, { InternalDSProps } from "./system";
 import { assert } from "@/utils/utils";
 import DogmaEntity from "./entity";
+import { SharedData } from "./dogma";
 export interface DogmaSceneFlags {
   isActive: boolean;
   isRendered: boolean;
@@ -17,6 +18,11 @@ interface PhaseEntry {
   before: Set<SystemRegistryKeys>;
   after: Set<SystemRegistryKeys>;
 }
+interface PhaseRemoveEntry {
+  phaseName: DogmaPhase;
+  systemName: SystemRegistryKeys;
+  sysRef: DogmaSystem;
+}
 export type PartialDSFlags = Partial<DogmaSceneFlags>;
 export default class DogmaScene {
   private components: Map<string, Map<Symbol, DogmaComponent>> = new Map();
@@ -26,8 +32,17 @@ export default class DogmaScene {
   public systemsToDispatch: Map<string, DogmaSystem> = new Map();
   public systemsToRemove: Set<SystemRegistryKeys> = new Set();
   public phaseToDispatch: PhaseEntry[] = [];
-  public phaseToRemove: Omit<PhaseEntry, "before" | "after">[] = [];
+  public phaseToRemove: PhaseRemoveEntry[] = [];
   private sceneName: string;
+  public readonly sceneSharedData: Map<string, SharedData> = new Map();
+  private queries: Map<string, Set<Symbol>> = new Map();
+  private queryFilters: Map<string, ComponentRegistryKeys[]> = new Map();
+  //TODO
+  public readonly entitiesInFrame = {
+    addedToFrame: new Set<Symbol>(),
+    removedFromFrame: new Set<Symbol>(),
+    inFrame: new Set<Symbol>(),
+  };
   private sceneFlags: DogmaSceneFlags = {
     isActive: true,
     isRendered: true,
@@ -54,6 +69,42 @@ export default class DogmaScene {
   public setFlag(flags: PartialDSFlags) {
     this.sceneFlags = { ...this.sceneFlags, ...flags };
   }
+  public getPhaseSubscribers(phase: DogmaPhase) {
+    return this.phaseManager[phase];
+  }
+  public getQueryResult(key: string) {
+    return this.queries.get(key);
+  }
+  public createQuery(key: string, list: ComponentRegistryKeys[]) {
+    const results = new Set<Symbol>();
+
+    this.queries.set(key, results);
+    this.queryFilters.set(key, list);
+
+    if (list.length === 0) return results;
+
+    const componentMaps: Map<Symbol, DogmaComponent>[] = [];
+    for (const name of list) {
+      const ComponentList = this.components.get(name);
+      if (!ComponentList) return results;
+      componentMaps.push(ComponentList);
+    }
+
+    const firstComponentMap = componentMaps[0];
+    for (const [id] of firstComponentMap) {
+      let hasAll = true;
+      for (let i = 1; i < componentMaps.length; i++) {
+        if (!componentMaps[i].has(id)) {
+          hasAll = false;
+          break;
+        }
+      }
+      if (hasAll) {
+        results.add(id);
+      }
+    }
+    return results;
+  }
 
   public addSystem<T extends SystemRegistryKeys>(name: T) {
     assert(
@@ -77,17 +128,12 @@ export default class DogmaScene {
     this.phaseToDispatch.push(phaseEntry);
   }
 
-  public removeFromScenePhase(
-    phaseEntry: Omit<PhaseEntry, "before" | "after">,
-  ) {
-    //TODO: nie musze tutaj polowy przekazywac, szkoda pracy
-    this.phaseToRemove.push(phaseEntry);
-  }
-  public getPhaseSubscribers(phase: DogmaPhase) {
-    return this.phaseManager[phase];
+  public removeFromScenePhase(entry: PhaseRemoveEntry) {
+    this.phaseToRemove.push(entry);
   }
 
   public entityDispatcher() {
+    const manipulatedEntities = new Set<Symbol>();
     if (this.componentsToDispatch.size !== 0) {
       this.componentsToDispatch.forEach((component) => {
         const name = component.componentName;
@@ -97,6 +143,7 @@ export default class DogmaScene {
           this.components.set(name, list);
         }
         list.set(component.ID, component);
+        manipulatedEntities.add(component.ID);
       });
       this.componentsToDispatch.clear();
     }
@@ -109,9 +156,29 @@ export default class DogmaScene {
           list.delete(component.ID);
           if (list.size === 0) this.components.delete(component.componentName);
         });
+        this.queries.forEach((querySet) => {
+          querySet.delete(ID);
+        });
       });
       this.componentsToRemove.clear();
     }
+    if (manipulatedEntities.size === 0 || this.queries.size === 0) return;
+    console.log("restart querisow");
+    this.queries.forEach((querySet, key) => {
+      const requiredComponents = this.queryFilters.get(key)!;
+      manipulatedEntities.forEach((id) => {
+        let hasAll = true;
+        for (const compName of requiredComponents) {
+          const list = this.components.get(compName);
+          if (!list || !list.has(id)) {
+            hasAll = false;
+            break;
+          }
+        }
+        if (hasAll) querySet.add(id);
+        else querySet.delete(id);
+      });
+    });
   }
   public systemDispatcher() {
     let needSorting = false;
@@ -137,11 +204,8 @@ export default class DogmaScene {
       this.phaseToRemove.forEach((entry) => {
         const subscribers = this.phaseManager[entry.phaseName];
         for (let i = subscribers.length - 1; i >= 0; i--) {
-          if (
-            subscribers[i].systemName === entry.systemName &&
-            subscribers[i].callback === entry.callback
-          )
-            subscribers.splice(i, 1);
+          if (subscribers[i].systemName !== entry.systemName) continue;
+          subscribers.splice(i, 1);
         }
       });
       this.phaseToRemove.length = 0;

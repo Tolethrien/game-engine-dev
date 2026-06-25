@@ -1,12 +1,14 @@
 import { assert } from "@/utils/utils";
 import Time from "@engine/time";
 import DogmaScene, { PartialDSFlags } from "./scene";
+export type SharedData = Record<string, unknown>;
 
 export default class Dogma {
   private static scenes: Map<string, DogmaScene> = new Map();
   private static scenesToDispatch: Map<string, DogmaScene> = new Map();
   private static scenesToRemoved: Set<string> = new Set();
   private static sceneSorted: DogmaScene[] = [];
+  public static readonly globalSharedData: Map<string, SharedData> = new Map();
 
   public static createScene(name: string, flags?: PartialDSFlags) {
     assert(!this.scenes.has(name), `Scen with name: ${name} already exist`);
