@@ -38,18 +38,17 @@ export default class DogmaScene {
   private readonly queries: Map<string, Set<Symbol>> = new Map();
   private readonly queryFilters: Map<string, ComponentRegistryKeys[]> =
     new Map();
-  //czemu publiczne?
   public readonly markerQuery: Map<string, Symbol> = new Map();
   public readonly markerMap: Map<Symbol, string> = new Map();
-
-  private readonly tagsQuery: Map<string, Set<Symbol>> = new Map();
-  private readonly tagsQueryFilter: Map<string, Set<string>> = new Map();
 
   public readonly entitiesInFrame = {
     addedToFrame: new Set<Symbol>(),
     removedFromFrame: new Set<Symbol>(),
     inFrame: new Set<Symbol>(),
   };
+  private tagIndex: Map<string, Set<Symbol>> = new Map();
+  private tagQueryCache: Map<string, Set<Symbol>> = new Map();
+
   private sceneFlags: DogmaSceneFlags = {
     isActive: true,
     isRendered: true,
@@ -112,46 +111,6 @@ export default class DogmaScene {
     }
     return results;
   }
-  public getTagsQueryResults(key: string) {
-    return this.tagsQuery.get(key);
-  }
-  public createTagsQuery(
-    key: string,
-    tags: string[],
-    component: ComponentRegistryKeys,
-  ) {
-    const results = new Set<Symbol>();
-    const tagsSet = new Set(tags);
-    this.tagsQuery.set(key, results);
-    tags.forEach((tag) => {
-      const list = this.tagsQueryFilter.get(tag);
-      if (list) list.add(key);
-      else this.tagsQueryFilter.set(tag, new Set<string>().add(key));
-    });
-    const list = this.components.get(component);
-    if (!list || tags.length === 0) return results;
-    list.forEach((comp, ID) => {
-      if (tagsSet.isSubsetOf(comp.tags)) results.add(ID);
-    });
-    return results;
-  }
-  public updateTagsQuery(tag: string, component: DogmaComponent) {
-    const list = this.tagsQueryFilter.get(tag);
-    if (!list) return;
-
-    list.forEach((tagQueryKey) => {
-      const query = this.tagsQuery.get(tagQueryKey);
-      if (!query) return;
-
-      const requiredTags = tagQueryKey.split("|");
-      const requiredTagsSet = new Set(requiredTags);
-
-      const hasAllTags = requiredTagsSet.isSubsetOf(component.tags);
-
-      if (hasAllTags) query.add(component.ID);
-      else query.delete(component.ID);
-    });
-  }
 
   public addSystem<T extends SystemRegistryKeys>(name: T) {
     assert(
@@ -190,12 +149,27 @@ export default class DogmaScene {
           this.markerQuery.set(marker, ent.ID);
           this.markerMap.set(ent.ID, marker);
         }
-        const tags = ent.getTags();
-        const key = Array.from(tags).sort().join("|");
-        const tagCache = this.tagsQuery.get(key);
-        if (tagCache) tagCache.add(ent.ID);
-
         const components = ent.getComponents();
+        // collect tags from components (components of same entity share tag set)
+        const collectedTags = new Set<string>();
+        components.forEach((component) => {
+          component.tags.forEach((t) => collectedTags.add(t));
+        });
+
+        // update tagIndex and invalidate caches referencing these tags
+        collectedTags.forEach((t) => {
+          let set = this.tagIndex.get(t);
+          if (!set) {
+            set = new Set();
+            this.tagIndex.set(t, set);
+          }
+          set.add(ent.ID);
+          // invalidate cache entries that include this tag
+          for (const key of Array.from(this.tagQueryCache.keys())) {
+            if (key.split("|").includes(t)) this.tagQueryCache.delete(key);
+          }
+        });
+
         components.forEach((component, name) => {
           let list = this.components.get(name);
           if (!list) {
@@ -216,7 +190,17 @@ export default class DogmaScene {
           this.markerMap.delete(ID);
           this.markerQuery.delete(marker);
         }
-        this.tagsQuery.forEach((query) => query.delete(ID));
+        // remove ID from tagIndex and invalidate caches for affected tags
+        for (const [tag, set] of Array.from(this.tagIndex.entries())) {
+          if (set.has(ID)) {
+            set.delete(ID);
+            if (set.size === 0) this.tagIndex.delete(tag);
+            for (const key of Array.from(this.tagQueryCache.keys())) {
+              if (key.split("|").includes(tag)) this.tagQueryCache.delete(key);
+            }
+          }
+        }
+
         this.components.forEach((list) => {
           const component = list.get(ID);
           if (!component) return;
@@ -229,33 +213,23 @@ export default class DogmaScene {
       });
       this.entityToRemove.clear();
     }
-    //czemu to sie nie wykonuje w dodawaniu ent po prostu? POPRAW
-    if (
-      this.entitiesInFrame.addedToFrame.size !== 0 &&
-      this.queries.size !== 0
-    ) {
-      this.queries.forEach((querySet, key) => {
-        const requiredComponents = this.queryFilters.get(key)!;
-        this.entitiesInFrame.addedToFrame.forEach((id) => {
-          let hasAll = true;
-          for (const compName of requiredComponents) {
-            const list = this.components.get(compName);
-            if (!list || !list.has(id)) {
-              hasAll = false;
-              break;
-            }
+    if (this.entitiesInFrame.addedToFrame.size === 0 || this.queries.size === 0)
+      return;
+    this.queries.forEach((querySet, key) => {
+      const requiredComponents = this.queryFilters.get(key)!;
+      this.entitiesInFrame.addedToFrame.forEach((id) => {
+        let hasAll = true;
+        for (const compName of requiredComponents) {
+          const list = this.components.get(compName);
+          if (!list || !list.has(id)) {
+            hasAll = false;
+            break;
           }
-          if (hasAll) querySet.add(id);
-          else querySet.delete(id);
-        });
+        }
+        if (hasAll) querySet.add(id);
+        else querySet.delete(id);
       });
-    }
-    if (
-      this.entitiesInFrame.addedToFrame.size !== 0 &&
-      this.tagsQuery.size !== 0
-    ) {
-      console.log("dodaje tagi");
-    }
+    });
   }
 
   public systemDispatcher() {
@@ -393,6 +367,87 @@ export default class DogmaScene {
       throw new Error(
         `Paradox: ${entry.systemName} is both before AND after: ${conflict.join(", ")}`,
       );
+  }
+
+  /**
+   * Return array of entity IDs that have all provided tags.
+   * Caches results per unique sorted tag list.
+   */
+  public getEntitiesByTags(tags: string[]): Symbol[] {
+    if (tags.length === 0) return Array.from(this.entitiesInFrame.inFrame);
+    const key = tags.slice().sort().join("|");
+    const cached = this.tagQueryCache.get(key);
+    if (cached) return Array.from(cached);
+    console.log("nie mam cachu!");
+    let result: Set<Symbol> | null = null;
+    for (const t of tags) {
+      const s = this.tagIndex.get(t);
+      if (!s) {
+        this.tagQueryCache.set(key, new Set());
+        return [];
+      }
+      if (result === null) result = new Set(s);
+      else {
+        for (const id of Array.from(result)) {
+          if (!s.has(id)) result.delete(id);
+        }
+        if (result.size === 0) break;
+      }
+    }
+    const finalSet = result ?? new Set<Symbol>();
+    this.tagQueryCache.set(key, new Set(finalSet));
+    return Array.from(finalSet);
+  }
+
+  /**
+   * Return array of entity IDs that have the given component AND all provided tags.
+   */
+  public getComponentsByTags(
+    componentName: ComponentRegistryKeys,
+    tags: string[],
+  ): Symbol[] {
+    const ids = this.getEntitiesByTags(tags);
+    const compList = this.components.get(componentName);
+    if (!compList) return [];
+    const res: Symbol[] = [];
+    for (const id of ids) if (compList.has(id)) res.push(id);
+    return res;
+  }
+
+  /**
+   * Notify scene that an entity's tag set changed. This will update tagIndex and invalidate caches.
+   */
+  public notifyEntityTagChange(ID: Symbol, tags: Set<string>) {
+    const prevTags = new Set<string>();
+    for (const [tag, set] of this.tagIndex) if (set.has(ID)) prevTags.add(tag);
+
+    // add new tags
+    for (const t of tags) {
+      if (!prevTags.has(t)) {
+        let s = this.tagIndex.get(t);
+        if (!s) {
+          s = new Set();
+          this.tagIndex.set(t, s);
+        }
+        s.add(ID);
+        for (const key of Array.from(this.tagQueryCache.keys())) {
+          if (key.split("|").includes(t)) this.tagQueryCache.delete(key);
+        }
+      }
+    }
+
+    // remove tags that are no longer present
+    for (const t of prevTags) {
+      if (!tags.has(t)) {
+        const s = this.tagIndex.get(t);
+        if (!s) continue;
+        s.delete(ID);
+        if (s.size === 0) this.tagIndex.delete(t);
+        for (const key of Array.from(this.tagQueryCache.keys())) {
+          if (key.split("|").includes(t)) this.tagQueryCache.delete(key);
+        }
+      }
+    }
   }
 
   public getComponentList(name: string) {

@@ -5,9 +5,11 @@ import { assert, createUUID } from "@/utils/utils";
 export default abstract class DogmaEntity {
   declare public readonly ID: Symbol;
   private readonly tags: Set<string> = new Set();
+  private marker: [string];
   private components = new Map<string, DogmaComponent>();
   public constructor() {
     this.ID = Symbol(createUUID());
+    this.marker = [""];
   }
   public addComponent<T extends keyof ComponentRegistry>(
     name: T,
@@ -21,6 +23,7 @@ export default abstract class DogmaEntity {
       ID: this.ID,
       tags: this.tags,
       componentName: name,
+      marker: this.marker,
     };
 
     const instance = new (dogmaConfig.components[name] as new (
@@ -31,10 +34,17 @@ export default abstract class DogmaEntity {
   public addTag(tag: string) {
     this.tags.add(tag);
   }
+  public getTags() {
+    return this.tags;
+  }
+  public setMarker(marker: string) {
+    this.marker[0] = marker;
+  }
+  public getMarker() {
+    return this.marker[0];
+  }
+
   public getComponents() {
     return this.components;
   }
-  //   public getTags() {
-  //     return this.tags;
-  //   }
 }

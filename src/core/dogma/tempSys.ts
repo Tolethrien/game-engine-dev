@@ -1,4 +1,3 @@
-import DogmaComponent from "./component";
 import Dogma, { SharedData } from "./dogma";
 import Scene from "./scene";
 import { dogmaConfig } from "@/sandbox/configs";
@@ -13,23 +12,22 @@ interface PhaseSubscriber {
   after?: SystemRegistryKeys[];
   before?: SystemRegistryKeys[];
 }
-type UniqueStringTuple<
+type queryMinArgs = [
+  ComponentRegistryKeys,
+  ComponentRegistryKeys,
+  ...ComponentRegistryKeys[],
+];
+type EnforceUnique<
   T extends readonly string[],
-  Seen extends string = never,
-> = T extends readonly [infer Head, ...infer Tail]
-  ? Head extends string
-    ? Head extends Seen
-      ? never
-      : [
-          Head,
-          ...UniqueStringTuple<
-            Tail extends readonly string[] ? Tail : [],
-            Seen | Head
-          >,
-        ]
-    : never
+  Visited extends string = never,
+> = T extends readonly [
+  infer Head extends string,
+  ...infer Tail extends readonly string[],
+]
+  ? Head extends Visited
+    ? ["Duplicated Component:", Head]
+    : [Head, ...EnforceUnique<Tail, Visited | Head>]
   : [];
-
 type SystemComponent<T extends ComponentRegistryKeys> =
   (typeof dogmaConfig.components)[T] extends new (...args: any[]) => infer R
     ? R
@@ -38,10 +36,12 @@ type SystemComponentList<T extends ComponentRegistryKeys> = Map<
   Symbol,
   SystemComponent<T>
 >;
+
 export default abstract class DogmaSystem {
   private systemActive: boolean = true;
   declare private parentScene: Scene;
   declare public readonly systemName: SystemRegistryKeys;
+
   public constructor(internal: InternalDSProps) {
     this.parentScene = internal.scene;
     this.systemName = internal.systemName;
@@ -54,6 +54,7 @@ export default abstract class DogmaSystem {
   public isActive() {
     return this.systemActive;
   }
+
   public setSharedData<T extends SharedData>(
     type: "global" | "local",
     name: string,
@@ -62,9 +63,11 @@ export default abstract class DogmaSystem {
     if (type === "local") this.parentScene.sceneSharedData.set(name, data);
     else if (type === "global") Dogma.globalSharedData.set(name, data);
   }
+
   public getEntitiesInFrameMeta() {
     return this.parentScene.entitiesInFrame;
   }
+
   public getSharedData<T extends SharedData>(
     type: "global" | "local",
     name: string,
@@ -74,15 +77,18 @@ export default abstract class DogmaSystem {
     else if (type === "global")
       return Dogma.globalSharedData.get(name) as T | undefined;
   }
+
   public removeSharedData(type: "global" | "local", name: string) {
     if (type === "local") this.parentScene.sceneSharedData.delete(name);
     else if (type === "global") Dogma.globalSharedData.delete(name);
   }
+
   public getComponentList<T extends ComponentRegistryKeys>(name: T) {
     return this.parentScene.getComponentList(name) as
       | SystemComponentList<T>
       | undefined;
   }
+
   public getComponent<T extends ComponentRegistryKeys>(
     ID: Symbol,
     componentName: T,
@@ -90,24 +96,6 @@ export default abstract class DogmaSystem {
     return this.parentScene.getComponentList(componentName)?.get(ID) as
       | SystemComponent<T>
       | undefined;
-  }
-
-  public addEntityTag(component: DogmaComponent, tag: string) {
-    component.tags.add(tag);
-    this.parentScene.updateTagsQuery(tag, component);
-  }
-  public removeEntityTag(component: DogmaComponent, tag: string) {
-    component.tags.delete(tag);
-    this.parentScene.updateTagsQuery(tag, component);
-  }
-  public getComponentsWithTags<
-    T extends ComponentRegistryKeys,
-    const U extends readonly [string, ...string[]],
-  >(component: T, tags: U & UniqueStringTuple<U>) {
-    const key = tags.sort().join("|");
-    const query = this.parentScene.getTagsQueryResults(key);
-    if (query) return query;
-    return this.parentScene.createTagsQuery(key, tags, component);
   }
 
   public getComponentWithMarker<T extends ComponentRegistryKeys>(
@@ -120,15 +108,31 @@ export default abstract class DogmaSystem {
     return list.get(id) as SystemComponent<T> | undefined;
   }
 
-  public query<
-    T extends ComponentRegistryKeys,
-    const U extends readonly [T, T, ...T[]],
-  >(list: U & UniqueStringTuple<U>) {
+  /** Return array of entity IDs that have all provided tags. */
+  public getEntitiesByTags(tags: string[]) {
+    return this.parentScene.getEntitiesByTags(tags);
+  }
+
+  /** Return array of entity IDs that have the given component and all provided tags. */
+  // public getComponentsByTag(
+  //   componentName: ComponentRegistryKeys,
+  //   tags: string[],
+  // ) {
+  //   return this.parentScene.getComponentsByTags(componentName, tags);
+  // }
+
+  /** Notify scene that an entity's tag set changed. */
+  public notifyEntityTagChange(ID: Symbol, tags: Set<string>) {
+    this.parentScene.notifyEntityTagChange(ID, tags);
+  }
+
+  public query<T extends queryMinArgs>(list: T & EnforceUnique<T>) {
     const key = list.sort().join("|");
     const query = this.parentScene.getQueryResult(key);
     if (query) return query;
     return this.parentScene.createQuery(key, list);
   }
+
   public subscribeToPhase(subscriber: PhaseSubscriber) {
     this.parentScene.addToScenePhase({
       callback: subscriber.callback,
@@ -139,6 +143,7 @@ export default abstract class DogmaSystem {
       before: new Set(subscriber.before ?? []),
     });
   }
+
   public unSubscribeFromPhase(phase: DogmaPhase) {
     this.parentScene.removeFromScenePhase({
       phaseName: phase,
