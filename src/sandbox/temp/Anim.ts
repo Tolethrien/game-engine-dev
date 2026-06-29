@@ -54,7 +54,7 @@ export default class Anim extends System {
     console.log("system removed");
   }
   public sendMsg() {
-    const query = this.query(["Move", "Trans"]);
+    const query = this.getComponentsGroup(["Move", "Trans"]);
     const tags = this.getComponentsWithTags("Move", ["human", "warrior"]);
     // console.log(tags);
     console.log(tags);

@@ -10,4 +10,6 @@ export default class EntityManager {
     const scene = Dogma.getScene(sceneName);
     scene.entityToRemove.add(entID);
   }
+  // public static cloneEntity() {}
+  // public static moveEntity() {}
 }

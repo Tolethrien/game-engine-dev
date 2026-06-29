@@ -19,17 +19,20 @@ export default abstract class DogmaEntity {
       !this.components.has(name),
       `Trying to add multiple instance of Component: ${name} to Entity: ${this.constructor.name}, ID:${this.ID.description}`,
     );
-    const internal: InternalDCProps = {
+    const internalProps: InternalDCProps = {
       ID: this.ID,
       tags: this.tags,
       componentName: name,
       marker: this.marker,
     };
 
-    const instance = new (dogmaConfig.components[name] as new (
+    const component = new (dogmaConfig.components[name] as new (
       ...args: unknown[]
-    ) => DogmaComponent)(internal, ...args);
-    this.components.set(name, instance);
+    ) => DogmaComponent)(internalProps, ...args);
+    this.components.set(name, component);
+  }
+  public getComponents() {
+    return this.components;
   }
   public addTag(tag: string) {
     this.tags.add(tag);
@@ -42,9 +45,5 @@ export default abstract class DogmaEntity {
   }
   public getMarker() {
     return this.marker[0];
-  }
-
-  public getComponents() {
-    return this.components;
   }
 }

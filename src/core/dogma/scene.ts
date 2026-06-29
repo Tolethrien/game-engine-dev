@@ -4,12 +4,17 @@ import DogmaSystem, { InternalDSProps } from "./system";
 import { assert } from "@/utils/utils";
 import DogmaEntity from "./entity";
 import { SharedData } from "./dogma";
+import EventManager, { EventData } from "./eventManager";
 export interface DogmaSceneFlags {
   isActive: boolean;
   isRendered: boolean;
-  isFocused: boolean;
   priority: number;
 }
+// interface DeferredSubscriber {
+//   callback: (data: EventData) => void;
+//   after?: SystemRegistryKeys[];
+//   before?: SystemRegistryKeys[];
+// }
 interface PhaseEntry {
   phaseName: DogmaPhase;
   systemName: SystemRegistryKeys;
@@ -21,27 +26,27 @@ interface PhaseEntry {
 interface PhaseRemoveEntry {
   phaseName: DogmaPhase;
   systemName: SystemRegistryKeys;
-  sysRef: DogmaSystem;
 }
 export type PartialDSFlags = Partial<DogmaSceneFlags>;
 export default class DogmaScene {
-  private components: Map<string, Map<Symbol, DogmaComponent>> = new Map();
-  private systems: Map<string, DogmaSystem> = new Map();
-  public entityToDispatch: Set<DogmaEntity> = new Set();
-  public entityToRemove: Set<DogmaEntity["ID"]> = new Set();
-  public systemsToDispatch: Map<string, DogmaSystem> = new Map();
-  public systemsToRemove: Set<SystemRegistryKeys> = new Set();
-  public phaseToDispatch: PhaseEntry[] = [];
-  public phaseToRemove: PhaseRemoveEntry[] = [];
-  private sceneName: string;
+  private readonly components: Map<string, Map<Symbol, DogmaComponent>> =
+    new Map();
+  private readonly systems: Map<string, DogmaSystem> = new Map();
+  public readonly entityToDispatch: Set<DogmaEntity> = new Set();
+  public readonly entityToRemove: Set<DogmaEntity["ID"]> = new Set();
+  public readonly systemsToDispatch: Map<string, DogmaSystem> = new Map();
+  public readonly systemsToRemove: Set<SystemRegistryKeys> = new Set();
+  public readonly phaseToDispatch: PhaseEntry[] = [];
+  public readonly phaseToRemove: PhaseRemoveEntry[] = [];
+  private readonly sceneName: string;
   public readonly sceneSharedData: Map<string, SharedData> = new Map();
+  public readonly eventManager: EventManager;
+
   private readonly queries: Map<string, Set<Symbol>> = new Map();
   private readonly queryFilters: Map<string, ComponentRegistryKeys[]> =
     new Map();
-  //czemu publiczne?
-  public readonly markerQuery: Map<string, Symbol> = new Map();
-  public readonly markerMap: Map<Symbol, string> = new Map();
-
+  private readonly markerQuery: Map<string, Symbol> = new Map();
+  private readonly markerMap: Map<Symbol, string> = new Map();
   private readonly tagsQuery: Map<string, Set<Symbol>> = new Map();
   private readonly tagsQueryFilter: Map<string, Set<string>> = new Map();
 
@@ -50,10 +55,10 @@ export default class DogmaScene {
     removedFromFrame: new Set<Symbol>(),
     inFrame: new Set<Symbol>(),
   };
+
   private sceneFlags: DogmaSceneFlags = {
     isActive: true,
     isRendered: true,
-    isFocused: true,
     priority: 0,
   };
   private phaseManager: Record<DogmaPhase, PhaseEntry[]> = {
@@ -62,10 +67,12 @@ export default class DogmaScene {
     preUpdate: [],
     render: [],
     update: [],
+    eventsDeferred: [],
   };
   public constructor(name: string, flags?: PartialDSFlags) {
     this.sceneName = name;
     this.sceneFlags = { ...this.sceneFlags, ...flags };
+    this.eventManager = new EventManager(this);
   }
   public getName() {
     return this.sceneName;
@@ -76,11 +83,26 @@ export default class DogmaScene {
   public setFlag(flags: PartialDSFlags) {
     this.sceneFlags = { ...this.sceneFlags, ...flags };
   }
+  public getComponentList(name: string) {
+    return this.components.get(name);
+  }
+  public getAllComponents() {
+    return this.components;
+  }
+  public getAllSystems() {
+    return this.systems;
+  }
+  public getSystem(name: SystemRegistryKeys) {
+    return this.systems.get(name);
+  }
   public getPhaseSubscribers(phase: DogmaPhase) {
     return this.phaseManager[phase];
   }
   public getQueryResult(key: string) {
     return this.queries.get(key);
+  }
+  public getMarkerQuery(marker: string) {
+    return this.markerQuery.get(marker);
   }
   public createQuery(key: string, list: ComponentRegistryKeys[]) {
     const results = new Set<Symbol>();
@@ -158,14 +180,14 @@ export default class DogmaScene {
       !this.systems.has(name) && !this.systemsToDispatch.has(name),
       `Trying to add multiple instance of System: ${name} to scene: ${this.sceneName}`,
     );
-    const internal: InternalDSProps = {
+    const internalProps: InternalDSProps = {
       scene: this,
       systemName: name,
     };
-    const instance = new (dogmaConfig.systems[name] as new (
+    const system = new (dogmaConfig.systems[name] as new (
       ...args: unknown[]
-    ) => DogmaSystem)(internal);
-    this.systemsToDispatch.set(name, instance);
+    ) => DogmaSystem)(internalProps);
+    this.systemsToDispatch.set(name, system);
   }
   public removeSystem<T extends SystemRegistryKeys>(name: T) {
     this.systemsToRemove.add(name);
@@ -178,86 +200,84 @@ export default class DogmaScene {
   public removeFromScenePhase(entry: PhaseRemoveEntry) {
     this.phaseToRemove.push(entry);
   }
+  /**@description subscribe function to a deferred events phase. Note! callback need to be "()=>callback()" or callback.bind(this) */
+  public addToDeferred(entry: PhaseEntry) {
+    this.validatePhaseConstraints(entry);
+    this.phaseToDispatch.push(entry);
+  }
+
+  /**@description unsubscribe function from a deferred events phase. */
+  public removeFromDeferred(entry: PhaseRemoveEntry) {
+    this.phaseToRemove.push(entry);
+  }
+
   public entityDispatcher() {
     this.entitiesInFrame.addedToFrame.clear();
     this.entitiesInFrame.removedFromFrame.clear();
-    if (this.entityToDispatch.size !== 0) {
-      this.entityToDispatch.forEach((ent) => {
-        this.entitiesInFrame.inFrame.add(ent.ID);
-        this.entitiesInFrame.addedToFrame.add(ent.ID);
-        const marker = ent.getMarker();
-        if (marker !== "") {
-          this.markerQuery.set(marker, ent.ID);
-          this.markerMap.set(ent.ID, marker);
-        }
-        const tags = ent.getTags();
-        const key = Array.from(tags).sort().join("|");
-        const tagCache = this.tagsQuery.get(key);
-        if (tagCache) tagCache.add(ent.ID);
-
-        const components = ent.getComponents();
-        components.forEach((component, name) => {
-          let list = this.components.get(name);
-          if (!list) {
-            list = new Map();
-            this.components.set(name, list);
-          }
-          list.set(component.ID, component);
-        });
-      });
-      this.entityToDispatch.clear();
-    }
-    if (this.entityToRemove.size !== 0) {
-      this.entityToRemove.forEach((ID) => {
-        this.entitiesInFrame.removedFromFrame.add(ID);
-        this.entitiesInFrame.inFrame.delete(ID);
-        const marker = this.markerMap.get(ID);
-        if (marker) {
-          this.markerMap.delete(ID);
-          this.markerQuery.delete(marker);
-        }
-        this.tagsQuery.forEach((query) => query.delete(ID));
-        this.components.forEach((list) => {
-          const component = list.get(ID);
-          if (!component) return;
-          list.delete(component.ID);
-          if (list.size === 0) this.components.delete(component.componentName);
-        });
-        this.queries.forEach((querySet) => {
-          querySet.delete(ID);
-        });
-      });
-      this.entityToRemove.clear();
-    }
-    //czemu to sie nie wykonuje w dodawaniu ent po prostu? POPRAW
-    if (
-      this.entitiesInFrame.addedToFrame.size !== 0 &&
-      this.queries.size !== 0
-    ) {
-      this.queries.forEach((querySet, key) => {
-        const requiredComponents = this.queryFilters.get(key)!;
-        this.entitiesInFrame.addedToFrame.forEach((id) => {
-          let hasAll = true;
-          for (const compName of requiredComponents) {
-            const list = this.components.get(compName);
-            if (!list || !list.has(id)) {
-              hasAll = false;
-              break;
-            }
-          }
-          if (hasAll) querySet.add(id);
-          else querySet.delete(id);
-        });
-      });
-    }
-    if (
-      this.entitiesInFrame.addedToFrame.size !== 0 &&
-      this.tagsQuery.size !== 0
-    ) {
-      console.log("dodaje tagi");
-    }
+    if (this.entityToDispatch.size !== 0) this.dispatchEntities();
+    if (this.entityToRemove.size !== 0) this.removeEntities();
   }
+  private dispatchEntities() {
+    this.entityToDispatch.forEach((ent) => {
+      this.entitiesInFrame.inFrame.add(ent.ID);
+      this.entitiesInFrame.addedToFrame.add(ent.ID);
+      const marker = ent.getMarker();
+      if (marker !== "") {
+        this.markerQuery.set(marker, ent.ID);
+        this.markerMap.set(ent.ID, marker);
+      }
+      const tags = ent.getTags();
+      const key = Array.from(tags).sort().join("|");
+      const tagCache = this.tagsQuery.get(key);
+      if (tagCache) tagCache.add(ent.ID);
 
+      const components = ent.getComponents();
+      components.forEach((component, name) => {
+        let list = this.components.get(name);
+        if (!list) {
+          list = new Map();
+          this.components.set(name, list);
+        }
+        list.set(component.ID, component);
+      });
+      this.queries.forEach((querySet, queryKey) => {
+        const requiredComponents = this.queryFilters.get(queryKey)!;
+        let hasAll = true;
+
+        for (const compName of requiredComponents) {
+          const list = this.components.get(compName);
+          if (!list || !list.has(ent.ID)) {
+            hasAll = false;
+            break;
+          }
+        }
+        if (hasAll) querySet.add(ent.ID);
+      });
+    });
+    this.entityToDispatch.clear();
+  }
+  private removeEntities() {
+    this.entityToRemove.forEach((ID) => {
+      this.entitiesInFrame.removedFromFrame.add(ID);
+      this.entitiesInFrame.inFrame.delete(ID);
+      const marker = this.markerMap.get(ID);
+      if (marker) {
+        this.markerMap.delete(ID);
+        this.markerQuery.delete(marker);
+      }
+      this.tagsQuery.forEach((query) => query.delete(ID));
+      this.components.forEach((list) => {
+        const component = list.get(ID);
+        if (!component) return;
+        list.delete(component.ID);
+        if (list.size === 0) this.components.delete(component.componentName);
+      });
+      this.queries.forEach((querySet) => {
+        querySet.delete(ID);
+      });
+    });
+    this.entityToRemove.clear();
+  }
   public systemDispatcher() {
     let needSorting = false;
     //AddSystems and fire oStart()
@@ -315,45 +335,43 @@ export default class DogmaScene {
       });
     }
   }
+
   //AI
   private sortPhaseByDependencies(entries: PhaseEntry[]) {
     const inDegree = new Map<number, number>();
     const adjacencyList = new Map<number, Set<number>>();
 
-    entries.forEach((_, idx) => {
-      inDegree.set(idx, 0);
-      adjacencyList.set(idx, new Set());
+    entries.forEach((_, index) => {
+      inDegree.set(index, 0);
+      adjacencyList.set(index, new Set());
     });
 
-    entries.forEach((entry, idx) => {
-      entries.forEach((other, otherIdx) => {
-        if (idx === otherIdx) return;
-
+    entries.forEach((entry, index) => {
+      entries.forEach((other, otherIndex) => {
+        if (index === otherIndex) return;
         if (entry.before.has(other.systemName)) {
-          adjacencyList.get(idx)!.add(otherIdx);
-          const degree = inDegree.get(otherIdx)!;
-          inDegree.set(otherIdx, degree + 1);
+          adjacencyList.get(index)!.add(otherIndex);
+          const degree = inDegree.get(otherIndex)!;
+          inDegree.set(otherIndex, degree + 1);
         }
-
         if (entry.after.has(other.systemName)) {
-          adjacencyList.get(otherIdx)!.add(idx);
-          const degree = inDegree.get(idx)!;
-          inDegree.set(idx, degree + 1);
+          adjacencyList.get(otherIndex)!.add(index);
+          const degree = inDegree.get(index)!;
+          inDegree.set(index, degree + 1);
         }
       });
     });
-
     const queue: number[] = [];
-    inDegree.forEach((degree, idx) => {
-      if (degree === 0) queue.push(idx);
+    inDegree.forEach((degree, index) => {
+      if (degree === 0) queue.push(index);
     });
 
     const sorted: PhaseEntry[] = [];
     while (queue.length > 0) {
-      const idx = queue.shift()!;
-      sorted.push(entries[idx]);
+      const index = queue.shift()!;
+      sorted.push(entries[index]);
 
-      adjacencyList.get(idx)!.forEach((neighbor) => {
+      adjacencyList.get(index)!.forEach((neighbor) => {
         const newDegree = inDegree.get(neighbor)! - 1;
         inDegree.set(neighbor, newDegree);
         if (newDegree === 0) {
@@ -364,11 +382,11 @@ export default class DogmaScene {
 
     if (sorted.length !== entries.length) {
       const remaining = new Set<number>();
-      inDegree.forEach((degree, idx) => {
-        if (degree > 0) remaining.add(idx);
+      inDegree.forEach((degree, index) => {
+        if (degree > 0) remaining.add(index);
       });
       const cycleNames = Array.from(remaining)
-        .map((idx) => entries[idx].systemName)
+        .map((index) => entries[index].systemName)
         .join(", ");
       throw new Error(
         `Phase Sorting: Circular Detected. Cannot resolve. Systems involved: ${cycleNames}`,
@@ -393,18 +411,5 @@ export default class DogmaScene {
       throw new Error(
         `Paradox: ${entry.systemName} is both before AND after: ${conflict.join(", ")}`,
       );
-  }
-
-  public getComponentList(name: string) {
-    return this.components.get(name);
-  }
-  public getAllComponents() {
-    return this.components;
-  }
-  public getAllSystems() {
-    return this.systems;
-  }
-  public getSystem(name: SystemRegistryKeys) {
-    return this.systems.get(name);
   }
 }

@@ -1,5 +1,6 @@
 import DogmaComponent from "./component";
 import Dogma, { SharedData } from "./dogma";
+import EventManager, { EventData } from "./eventManager";
 import Scene from "./scene";
 import { dogmaConfig } from "@/sandbox/configs";
 
@@ -13,6 +14,7 @@ interface PhaseSubscriber {
   after?: SystemRegistryKeys[];
   before?: SystemRegistryKeys[];
 }
+
 type UniqueStringTuple<
   T extends readonly string[],
   Seen extends string = never,
@@ -42,47 +44,61 @@ export default abstract class DogmaSystem {
   private systemActive: boolean = true;
   declare private parentScene: Scene;
   declare public readonly systemName: SystemRegistryKeys;
-  public constructor(internal: InternalDSProps) {
-    this.parentScene = internal.scene;
-    this.systemName = internal.systemName;
+  public constructor({ scene, systemName }: InternalDSProps) {
+    this.parentScene = scene;
+    this.systemName = systemName;
   }
 
+  /**@description set activity of a system, when false system will not be executed */
   public setActive(bool: boolean) {
     this.systemActive = bool;
   }
 
+  /**@description returns activity of a system */
   public isActive() {
     return this.systemActive;
   }
-  public setSharedData<T extends SharedData>(
-    type: "global" | "local",
-    name: string,
-    data: T,
-  ) {
-    if (type === "local") this.parentScene.sceneSharedData.set(name, data);
-    else if (type === "global") Dogma.globalSharedData.set(name, data);
-  }
+
+  /**@description returns current frame meta for this scene of entities life cycle */
   public getEntitiesInFrameMeta() {
     return this.parentScene.entitiesInFrame;
   }
+
+  /**@description sets any of user shared data based of access lvl, global - available in all Scenes, scene - available only in current scene */
+  public setSharedData<T extends SharedData>(
+    type: "global" | "scene",
+    name: string,
+    data: T,
+  ) {
+    if (type === "scene") this.parentScene.sceneSharedData.set(name, data);
+    else if (type === "global") Dogma.globalSharedData.set(name, data);
+  }
+
+  /**@description returns shared data based of access lvl */
   public getSharedData<T extends SharedData>(
-    type: "global" | "local",
+    type: "global" | "scene",
     name: string,
   ) {
-    if (type === "local")
+    if (type === "scene")
       return this.parentScene.sceneSharedData.get(name) as T | undefined;
     else if (type === "global")
       return Dogma.globalSharedData.get(name) as T | undefined;
   }
-  public removeSharedData(type: "global" | "local", name: string) {
-    if (type === "local") this.parentScene.sceneSharedData.delete(name);
+
+  /**@description removes shared data based of access lvl */
+  public removeSharedData(type: "global" | "scene", name: string) {
+    if (type === "scene") this.parentScene.sceneSharedData.delete(name);
     else if (type === "global") Dogma.globalSharedData.delete(name);
   }
+
+  /**@description returns full list of specific components in frame */
   public getComponentList<T extends ComponentRegistryKeys>(name: T) {
     return this.parentScene.getComponentList(name) as
       | SystemComponentList<T>
       | undefined;
   }
+
+  /**@description returns specific component from components list */
   public getComponent<T extends ComponentRegistryKeys>(
     ID: Symbol,
     componentName: T,
@@ -92,14 +108,7 @@ export default abstract class DogmaSystem {
       | undefined;
   }
 
-  public addEntityTag(component: DogmaComponent, tag: string) {
-    component.tags.add(tag);
-    this.parentScene.updateTagsQuery(tag, component);
-  }
-  public removeEntityTag(component: DogmaComponent, tag: string) {
-    component.tags.delete(tag);
-    this.parentScene.updateTagsQuery(tag, component);
-  }
+  /**@description returns and cache list of entities ID's with this specific component and tags */
   public getComponentsWithTags<
     T extends ComponentRegistryKeys,
     const U extends readonly [string, ...string[]],
@@ -110,17 +119,19 @@ export default abstract class DogmaSystem {
     return this.parentScene.createTagsQuery(key, tags, component);
   }
 
+  /**@description returns and cache specific ID of a specific Entity with this marker */
   public getComponentWithMarker<T extends ComponentRegistryKeys>(
     marker: string,
     componentName: T,
   ) {
     const list = this.parentScene.getComponentList(componentName);
-    const id = this.parentScene.markerQuery.get(marker);
+    const id = this.parentScene.getMarkerQuery(marker);
     if (!id || !list) return undefined;
     return list.get(id) as SystemComponent<T> | undefined;
   }
 
-  public query<
+  /**@description returns and cache list of entities ID's with this specific combination of components */
+  public getComponentsGroup<
     T extends ComponentRegistryKeys,
     const U extends readonly [T, T, ...T[]],
   >(list: U & UniqueStringTuple<U>) {
@@ -129,6 +140,20 @@ export default abstract class DogmaSystem {
     if (query) return query;
     return this.parentScene.createQuery(key, list);
   }
+
+  /**@description adds a new tag to specific entity and all of his components by accessing one of his components and update tags cache */
+  public addEntityTag(component: DogmaComponent, tag: string) {
+    component.tags.add(tag);
+    this.parentScene.updateTagsQuery(tag, component);
+  }
+
+  /**@description removes tag from specific entity and all of his components by accessing one of his components and update tags cache */
+  public removeEntityTag(component: DogmaComponent, tag: string) {
+    component.tags.delete(tag);
+    this.parentScene.updateTagsQuery(tag, component);
+  }
+
+  /**@description subscribe function to a specific loop phase. Note! callback need to be "()=>callback()" or callback.bind(this) */
   public subscribeToPhase(subscriber: PhaseSubscriber) {
     this.parentScene.addToScenePhase({
       callback: subscriber.callback,
@@ -139,14 +164,17 @@ export default abstract class DogmaSystem {
       before: new Set(subscriber.before ?? []),
     });
   }
+
+  /**@description unsubscribe function from a specific loop phase. */
   public unSubscribeFromPhase(phase: DogmaPhase) {
     this.parentScene.removeFromScenePhase({
       phaseName: phase,
       systemName: this.systemName,
-      sysRef: this,
     });
   }
-
+  public get events() {
+    return this.parentScene.eventManager;
+  }
   //MAIN OVERRIDES
   /**@description this will happen ones right after the new frame start, good for debugging and timing*/
   public onFrameStart() {}

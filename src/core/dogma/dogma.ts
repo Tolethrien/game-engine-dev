@@ -67,6 +67,11 @@ export default class Dogma {
     }
     Time.switchToUpdateContext();
 
+    const frameDtMs = Time.getDeltaTime();
+    this.sceneSorted.forEach(
+      (scene) =>
+        scene.getFlags().isActive && scene.eventManager.updateTimers(frameDtMs),
+    );
     this.sceneSorted.forEach((scene) => {
       if (!scene.getFlags().isActive) return;
       scene
@@ -80,6 +85,13 @@ export default class Dogma {
         .forEach((entry) => entry.sysRef.isActive() && entry.callback());
     });
     Time.updateAlpha();
+
+    this.sceneSorted.forEach((scene) => {
+      scene
+        .getPhaseSubscribers("eventsDeferred")
+        .forEach((entry) => entry.sysRef.isActive() && entry.callback());
+      scene.eventManager.flush();
+    });
 
     this.sceneSorted.forEach((scene) => {
       if (!scene.getFlags().isRendered) return;
