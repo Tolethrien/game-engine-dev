@@ -1,5 +1,7 @@
 # Dogma — dokumentacja dla developerów
 
+Dogma to akronim od "Data Oriented Game Mechanics Architecture".
+
 Ten dokument opisuje wewnętrzne działanie modułu Dogma w katalogu [src/core/dogma](../src/core/dogma). Jest przeznaczony dla osób, które chcą rozumieć, jak silnik działa od środka lub rozszerzać go o nowe funkcje.
 
 ## Architektura
@@ -29,10 +31,15 @@ Klasa `Dogma` przechowuje:
 
 Metoda `tickAll()` robi kolejno:
 
-1. `sceneDispatcher()`
-2. `systemDispatcher()` dla każdej sceny
-3. `entityDispatcher()` dla każdej sceny
-4. uruchomienie callbacków fazowych
+1. `sceneDispatcher()` — przetwarza sceny w `scenesToDispatch` i `scenesToRemoved`, zapisuje je do `scenes`, a następnie sortuje `sceneSorted` po `priority`.
+2. `systemDispatcher()` dla każdej sceny — dopina nowe systemy, uruchamia ich `onStart()`, usuwa systemy zaplanowane do usunięcia, dopisuje subskrypcje do `phaseManager` i sortuje fazy topologicznie.
+3. `entityDispatcher()` dla każdej sceny — realizuje kolejkowanie encji, aktualizuje `entitiesInFrame`, rejestruje markery i tagi oraz uaktualnia cache zapytań po komponentach.
+4. `preUpdate` — wykonuje subskrypcje ustawione dla tej fazy.
+5. `fixedUpdate` — wykonuje się wielokrotnie w pętli, aż `Time.requestFixedUpdate()` przestanie zwracać `true`.
+6. `update` — po aktualizacji czasu i `eventManager.updateTimers(frameDtMs)`.
+7. `postUpdate` — faza kończąca logikę aktualizacji.
+8. `eventsDeferred` — specjalna faza, w której wykonywane są callbacki z opóźnionych zdarzeń i zaplanowanych faz zdarzeniowych.
+9. `render` — wykonywana tylko, gdy `scene.getFlags().isRendered` jest `true`.
 
 ### DogmaScene
 
@@ -96,6 +103,17 @@ Wpis zawiera:
 
 Subskrypcja jest dodawana przez `DogmaSystem.subscribeToPhase(...)` i trafia do `scene.addToScenePhase(...)`.
 
+`DogmaScene.phaseManager` zawiera wszystkie fazy:
+
+- `preUpdate`
+- `fixedUpdate`
+- `update`
+- `postUpdate`
+- `eventsDeferred`
+- `render`
+
+Faza `eventsDeferred` jest specjalna: to w niej wykonywane są callbacki z opóźnionych / odroczonych zdarzeń, zanim `EventManager.flush()` wyczyści kolejki.
+
 ### Sortowanie zależności
 
 Po dodaniu/usunięciu subskrypcji lub systemu scena wykonuje sortowanie topologiczne po każdej fazie.
@@ -150,6 +168,16 @@ W `entityDispatcher()` encja jest:
 
 Zapytanie jest przechowywane jako `Set<Symbol>` zawierający ID encji z wymaganymi komponentami.
 
+### Kaskada i cache danych
+
+Podczas `entityDispatcher()` każda dodana encja aktualizuje cache zapytań oraz `entitiesInFrame`:
+
+- `addedToFrame` — encje dodane w bieżącym ticku
+- `removedFromFrame` — encje usunięte w bieżącym ticku
+- `inFrame` — aktywne encje w scenie
+
+Dzięki temu systemy mogą bezpiecznie odczytywać wyniki zapytań i korzystać z danych o życiu encji w ramach aktualnej klatki.
+
 ### Query po tagach
 
 `DogmaSystem.getComponentsWithTags(component, tags)` działa przez:
@@ -171,6 +199,56 @@ API:
 - `setSharedData(type, name, data)`
 - `getSharedData(type, name)`
 - `removeSharedData(type, name)`
+
+## Mechanizm eventów
+
+`EventManager` w `DogmaScene` obsługuje kilka trybów pracy:
+
+- `emitImmediate(eventName, data)` — wykonywane natychmiast w miejscu wywołania.
+- `emitDeferred(eventName, data)` — zapisuje zdarzenie do wewnętrznej kolejki; zostanie obsłużone w fazie `eventsDeferred`.
+- `emitCascade(eventName, data)` — przechowuje dane w `cascadeEvents`, które mogą zostać odczytane później przez inne systemy lub inne fazy tej samej klatki przy pomocy `eventManager.getCascade(eventName)`.
+
+### Subskrypcje
+
+- `events.subscribeToImmediate(eventName, callback)` — rejestruj odbiorcę zdarzeń natychmiastowych.
+- `events.unsubscribeFromImmediate(eventName, ID)` — usuń subskrypcję natychmiastowego zdarzenia.
+- `events.subscribeToDeferred({ eventName, sysRef: this, callback, before?, after? })` — subskrybuj odroczone zdarzenia w fazie `eventsDeferred`.
+- `events.unsubscribeFromDeferred(key)` — usuń subskrypcję odroczonego zdarzenia.
+
+### Przykłady
+
+```ts
+const immediateID = this.events.subscribeToImmediate("DamageTaken", (data) => {
+  // obsługa natychmiastowych efektów
+});
+this.events.emitImmediate("DamageTaken", { amount: 10 });
+this.events.unsubscribeFromImmediate("DamageTaken", immediateID);
+```
+
+```ts
+const deferredKey = this.events.subscribeToDeferred({
+  eventName: "SpawnEnemy",
+  sysRef: this,
+  callback: (data) => {
+    // obsługa odroczonego zdarzenia w fazie eventsDeferred
+  },
+  after: ["Physics"],
+});
+this.events.emitDeferred("SpawnEnemy", { type: "orc" });
+this.events.unsubscribeFromDeferred(deferredKey);
+```
+
+```ts
+this.events.emitCascade("CollisionChain", { source: entityID });
+const cascadeData = this.events.getCascade("CollisionChain");
+```
+
+### Opóźnienia i interwały
+
+- `emitDelayed({ eventName, data, delaySeconds, mode })` — zarejestruj zdarzenie, które zostanie wysłane po zadanym czasie. Jeśli `mode` to `"immediate"`, po czasie wywoła `emitImmediate`; jeśli `mode` to `"deferred"`, po czasie wywoła `emitDeferred`.
+- `emitInterval({ eventName, data, intervalSeconds, totalSeconds, mode })` — powtarza emisję co `intervalSeconds` aż do wyczerpania `totalSeconds`, używając podanego trybu `mode`.
+
+`Time.updateTimers(frameDtMs)` jest wywoływane tuż przed fazą `update`, więc opóźnione i interwałowe zdarzenia są rozliczane w tym samym ticku.
 
 ## Uwaga o aktualnym stanie kodu
 
@@ -204,6 +282,7 @@ Obecnie lista faz jest sztywno zdefiniowana jako:
 - `fixedUpdate`
 - `update`
 - `postUpdate`
+- `eventsDeferred`
 - `render`
 
 Aby dodać nową fazę, trzeba zmodyfikować:

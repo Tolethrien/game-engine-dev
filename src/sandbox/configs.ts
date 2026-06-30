@@ -1,9 +1,10 @@
-import Move from "./temp/move";
-import Anim from "./temp/Anim";
-import Rend from "./temp/rend";
-import Trans from "./temp/trans";
+import Phys from "./components/phys";
+import Transform from "./components/transform";
+import Inputs from "./systems/inputs";
+import Physics from "./systems/physics";
+import Render from "./systems/render";
 
 export const dogmaConfig = {
-  systems: { Anim, Rend },
-  components: { Move, Trans },
+  systems: { Render, Inputs, Physics },
+  components: { Transform, Phys },
 } satisfies DogmaConfig;

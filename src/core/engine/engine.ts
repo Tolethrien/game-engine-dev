@@ -6,6 +6,7 @@ import Dogma from "../dogma/dogma";
 
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
+  declare private static context: CanvasRenderingContext2D;
   public static async initialize({
     preload,
     setup,
@@ -20,9 +21,13 @@ export default class Engine {
     setup();
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }
+  public static get ctx() {
+    return this.context;
+  }
   private static loop(currentTime: number) {
     Time.update(currentTime);
     InputManager.updateInputs();
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     Dogma.tickAll();
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }
@@ -36,6 +41,7 @@ export default class Engine {
     ) as HTMLCanvasElement | null;
     assert(canvas !== null, "There is no canvas element with ID: gameWindow");
     this.canvas = canvas;
+    this.context = canvas.getContext("2d")!;
     const size = await window.API.WINDOW.getWindowSize();
     canvas.width = size.width;
     canvas.height = size.height;

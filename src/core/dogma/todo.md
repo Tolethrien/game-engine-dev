@@ -12,7 +12,9 @@ pooling obiektow/komponentow? po co mam tworzyc setki transformow dla nowych obi
 
 ## potencjalne przemyslenia
 
+- powinienem czyscic querisy jak sie usuwaja encje wszystkie z nich
 - obecnie entityMarker jest [] by miec mutowalnosc i kazdy komponent mial referencje do tej samej listy i markera ALE w sumie nie mam mozliwosci obecnie zmieniania markera ani dodawania i usuwania komponentow z encji w locie! wiec teorytycznie to moze byc przekazywane jako string do komponentu, ale pewnie bede chcial mozliwosc dodawania usuwania komponentow w locie
 - klasa entityManager w sumie moze byc zbedna niedługo jesli wprowadze eventy bo spawn destroy moze byc w niej
 - czy ja chce lepiej ogarnac gettery na rzeczy jak isActive by faktyczne to gettery byly
 - w getComponentsGroup nie podobam i sie to const w typach, ulepszyc to jakso moge potem
+- zrobic jakos omit na subkryberze fazy by nie bylo eventu fazy

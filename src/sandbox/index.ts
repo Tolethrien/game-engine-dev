@@ -1,16 +1,17 @@
 import Dogma from "@/core/dogma/dogma";
 import Engine from "@engine/engine";
-import EntitA from "./temp/entitA";
+import Player from "./entities/player";
 import EntityManager from "@/core/dogma/entityManager";
+import Wall from "./entities/wall";
 async function preload() {}
 function setup() {
-  const sec = Dogma.createScene("Sec", { priority: 1 });
-  const main = Dogma.createScene("Main", { priority: 0 });
-
-  main.addSystem("Rend");
-  main.addSystem("Anim");
-
-  // main.addSystem("Rend", { sprite: 1 });
-  console.log(Dogma.getAllScenes());
+  const main = Dogma.createScene("Main");
+  main.addSystem("Inputs");
+  main.addSystem("Physics");
+  main.addSystem("Render");
+  const player = new Player();
+  const wall = new Wall();
+  EntityManager.spawnEntity(player, "Main");
+  EntityManager.spawnEntity(wall, "Main");
 }
 Engine.initialize({ setup, preload });

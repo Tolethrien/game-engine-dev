@@ -1,5 +1,7 @@
 # Dogma — dokumentacja dla użytkownika
 
+Dogma to akronim od "Data Oriented Game Mechanics Architecture".
+
 Dogma to lekki silnik ECS-style, który zarządza scenami, systemami, encjami i komponentami. Pozwala budować prostą logikę gry lub aplikacji w oparciu o sceny, fazy aktualizacji i zależności między systemami.
 
 ## Najważniejsze pojęcia
@@ -109,7 +111,13 @@ Dogma.tickAll();
 1. sortowanie scen po `priority`
 2. dispatch systemów
 3. dispatch encji
-4. wywołanie subskrypcji fazowych: `preUpdate`, `fixedUpdate`, `update`, `postUpdate`, `render`
+4. wywołanie subskrypcji fazowych: `preUpdate`, `fixedUpdate`, `update`, `postUpdate`, `eventsDeferred`, `render`
+
+Warto wiedzieć:
+
+- `fixedUpdate` może się wykonać wielokrotnie w jednym ticku, jeśli `Time.requestFixedUpdate()` zwraca `true`.
+- `eventsDeferred` to faza, w której zaplanowane zdarzenia odroczone są przetwarzane przed `render`.
+- `render` jest pomijany, jeśli scena ma `isRendered === false`.
 
 ## Fazy aktualizacji
 
@@ -119,9 +127,12 @@ Systemy mogą zapisywać się do następujących faz:
 - `fixedUpdate`
 - `update`
 - `postUpdate`
+- `eventsDeferred`
 - `render`
 
 Każda faza jest uruchamiana w kolejności, którą silnik ustala na podstawie zależności między systemami.
+
+Faza `eventsDeferred` jest przeznaczona dla odroczonych zdarzeń i płynie po rozliczeniu `postUpdate`, ale przed `render`.
 
 ## Zależności między systemami
 
@@ -153,6 +164,17 @@ W systemie możesz używać:
 - `query([...])` — zapytanie po komponentach
 - `getComponentsWithTags(...)` — filtrowanie po tagach
 - `getComponentWithMarker(...)` — dostęp do encji po markerze
+- `events.subscribeToImmediate(eventName, callback)` — subskrypcja zdarzeń natychmiastowych
+- `events.unsubscribeFromImmediate(eventName, ID)` — usuń subskrypcję natychmiastowego zdarzenia
+- `events.subscribeToDeferred({ eventName, sysRef: this, callback, before?, after? })` — subskrypcja na odroczone zdarzenia w fazie `eventsDeferred`
+- `events.unsubscribeFromDeferred(key)` — usuń subskrypcję odroczoną
+- `events.emitImmediate(eventName, data)` — emituj zdarzenie natychmiastowo
+- `events.emitDeferred(eventName, data)` — odłóż zdarzenie do fazy `eventsDeferred`
+- `events.emitCascade(eventName, data)` — zapisz kaskadowe dane, które mogą być odczytane później
+- `events.getCascade(eventName)` — pobierz dane z kaskady
+- `events.deleteCascadeEvent(eventName)` — usuń dane z kaskady
+- `events.emitDelayed({ eventName, data, delaySeconds, mode })` — opóźnione emitowanie zdarzenia
+- `events.emitInterval({ eventName, data, intervalSeconds, totalSeconds, mode })` — powtarzające się emitowanie zdarzenia
 
 ## Najważniejsze metody encji
 
@@ -168,3 +190,7 @@ W systemie możesz używać:
 - `render` nie wykona się, jeśli scena ma `isRendered === false`.
 - Systemy, które nie są aktywne, nie wykonują callbacków.
 - Encje są dodawane do sceny dopiero podczas dispatcha encji, a usuwane podczas kolejnego kroku.
+- `emitImmediate(...)` działa natychmiastowo, w miejscu wywołania.
+- `emitDeferred(...)` działa w fazie `eventsDeferred`.
+- `emitCascade(...)` przechowuje dane do późniejszego odczytu przez inne systemy lub fazy.
+- `emitDelayed(...)` i `emitInterval(...)` są obsługiwane poprzez `Time.updateTimers(...)` wywoływane tuż przed fazą `update`.
