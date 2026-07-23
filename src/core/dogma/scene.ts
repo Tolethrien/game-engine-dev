@@ -350,14 +350,18 @@ export default class DogmaScene {
       entries.forEach((other, otherIndex) => {
         if (index === otherIndex) return;
         if (entry.before.has(other.systemName)) {
-          adjacencyList.get(index)!.add(otherIndex);
-          const degree = inDegree.get(otherIndex)!;
-          inDegree.set(otherIndex, degree + 1);
+          const neighbors = adjacencyList.get(index)!;
+          if (!neighbors.has(otherIndex)) {
+            neighbors.add(otherIndex);
+            inDegree.set(otherIndex, inDegree.get(otherIndex)! + 1);
+          }
         }
         if (entry.after.has(other.systemName)) {
-          adjacencyList.get(otherIndex)!.add(index);
-          const degree = inDegree.get(index)!;
-          inDegree.set(index, degree + 1);
+          const otherNeighbors = adjacencyList.get(otherIndex)!;
+          if (!otherNeighbors.has(index)) {
+            otherNeighbors.add(index);
+            inDegree.set(index, inDegree.get(index)! + 1);
+          }
         }
       });
     });

@@ -43,6 +43,9 @@ function onProd() {
   mainWindow.loadFile(
     path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
   );
+  globalShortcut.register("CommandOrControl+Shift+I", () => {
+    mainWindow.webContents.toggleDevTools();
+  });
   mainWindow.webContents.openDevTools({
     mode: "detach",
     activate: false,

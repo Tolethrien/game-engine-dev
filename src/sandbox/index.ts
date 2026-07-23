@@ -1,17 +1,10 @@
 import Dogma from "@/core/dogma/dogma";
-import Engine from "@engine/engine";
+import Engine from "@/core/engine/engine";
 import Player from "./entities/player";
-import EntityManager from "@/core/dogma/entityManager";
 import Wall from "./entities/wall";
+import EntityManager from "@/core/dogma/entityManager";
+import Vec2 from "@/core/axiom/vec2";
+import AxiomColor from "@/core/axiom/color";
 async function preload() {}
-function setup() {
-  const main = Dogma.createScene("Main");
-  main.addSystem("Inputs");
-  main.addSystem("Physics");
-  main.addSystem("Render");
-  const player = new Player();
-  const wall = new Wall();
-  EntityManager.spawnEntity(player, "Main");
-  EntityManager.spawnEntity(wall, "Main");
-}
+function setup() {}
 Engine.initialize({ setup, preload });

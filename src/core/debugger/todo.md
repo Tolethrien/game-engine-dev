@@ -1,0 +1,4 @@
+- moduł glowny z performance silnika, czyli klatki, czasy framow i takie tam
+- graf czasowy, kazdy system i faza bedzie mierzone czasem w silniku bezposrednio i potem z tych danych budowany graficzny graf ile co trwalo, dodatkowo mozna by miec jeszcze % ile sie polepszyulo pogorszylo w ciagu ostatniej minuty
+- debugger powinien miec mozliwosc zapisywania logow na dysk
+- moduł GPU

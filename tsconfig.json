@@ -14,6 +14,7 @@
       "@sandbox/*": ["./src/sandbox/*"],
       "@engine/*": ["./src/core/engine/*"],
       "@dogma/*": ["./src/core/dogma/*"],
+      "@debug": ["./src/core/debugger/debug.ts"],
       "@utils/*": ["./src/utils/*"]
     },
     "moduleResolution": "nodenext",

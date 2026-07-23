@@ -2,8 +2,6 @@ import "@/css/index.css";
 import { assert } from "@utils/utils";
 import InputManager from "@engine/inputManager";
 import Time from "@engine/time";
-import Dogma from "../dogma/dogma";
-
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
   declare private static context: CanvasRenderingContext2D;
@@ -26,9 +24,9 @@ export default class Engine {
   }
   private static loop(currentTime: number) {
     Time.update(currentTime);
-    InputManager.updateInputs();
+
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    Dogma.tickAll();
+
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }
 

@@ -1,292 +1,230 @@
-# Dogma — dokumentacja dla developerów
+# DOGMA — notatki developerskie (jak to działa od środka)
 
-Dogma to akronim od "Data Oriented Game Mechanics Architecture".
+**DOGMA** = **D**ata **O**riented **G**ame **M**echanics **A**rchitecture.
 
-Ten dokument opisuje wewnętrzne działanie modułu Dogma w katalogu [src/core/dogma](../src/core/dogma). Jest przeznaczony dla osób, które chcą rozumieć, jak silnik działa od środka lub rozszerzać go o nowe funkcje.
+Ten dokument opisuje wewnętrzne bebechy modułu z [`src/core/dogma`](../src/core/dogma). To notatka „dla siebie” — żeby po powrocie do projektu przypomnieć sobie, **dlaczego** coś jest zrobione tak, a nie inaczej, gdzie są kruche miejsca i co zostało do zrobienia.
 
-## Architektura
+Pliki:
 
-Dogma składa się z kilku warstw:
+| Plik | Rola |
+|------|------|
+| [`dogma.ts`](../src/core/dogma/dogma.ts) | Statyczny manager scen + główna pętla `tickAll()` |
+| [`scene.ts`](../src/core/dogma/scene.ts) | Serce systemu: systemy, fazy, encje, komponenty, query |
+| [`system.ts`](../src/core/dogma/system.ts) | Klasa bazowa systemu + całe publiczne API dla użytkownika |
+| [`entity.ts`](../src/core/dogma/entity.ts) | Kontener komponentów + tagi + marker |
+| [`component.ts`](../src/core/dogma/component.ts) | Bazowy komponent (dane + gettery do ID/tagów/markera) |
+| [`eventManager.ts`](../src/core/dogma/eventManager.ts) | Immediate / deferred / cascade / timery |
+| [`entityManager.ts`](../src/core/dogma/entityManager.ts) | Cienki fasada do spawn/remove encji |
+| [`type.d.ts`](../src/core/dogma/type.d.ts) | Globalne typy generowane z `dogmaConfig` |
 
-- `Dogma` — statyczny manager scen
-- `DogmaScene` — zarządzanie systemami, fazami, encjami i komponentami
-- `DogmaSystem` — abstrakcja systemu z API do subskrypcji i dostępu do danych
-- `DogmaEntity` — kontener komponentów, tagów i markera
-- `DogmaComponent` — lekki obiekt stanu
-- `EntityManager` — pomocnik do dodawania/usuwania encji ze sceny
+---
 
-## Główne struktury danych
+## Filozofia dwóch faz: „to dispatch" i realizacja
 
-### Dogma
+Najważniejszy wzorzec w całym module: **nic nie dzieje się natychmiast**. Każda mutacja struktury (dodanie sceny, systemu, encji, subskrypcji fazy) trafia najpierw do bufora `*ToDispatch` / `*ToRemove`, a realna zmiana następuje na **początku ticku**, w kontrolowanym momencie.
 
-Klasa `Dogma` przechowuje:
+Po co: dzięki temu w trakcie iteracji po encjach/systemach można bezpiecznie zlecać spawn/destroy bez psucia iteratorów i bez niedeterminizmu „kto pierwszy zdążył”.
 
-- `scenes` — aktywne sceny
-- `scenesToDispatch` — sceny oczekujące na zarejestrowanie
-- `scenesToRemoved` — sceny oczekujące na usunięcie
-- `sceneSorted` — uporządkowane sceny do aktualizacji
-- `globalSharedData` — dane współdzielone globalnie
+Bufory:
 
-#### Flow ticka
+- `Dogma`: `scenesToDispatch`, `scenesToRemoved`
+- `DogmaScene`: `systemsToDispatch`, `systemsToRemove`, `entityToDispatch`, `entityToRemove`, `phaseToDispatch`, `phaseToRemove`
 
-Metoda `tickAll()` robi kolejno:
+---
 
-1. `sceneDispatcher()` — przetwarza sceny w `scenesToDispatch` i `scenesToRemoved`, zapisuje je do `scenes`, a następnie sortuje `sceneSorted` po `priority`.
-2. `systemDispatcher()` dla każdej sceny — dopina nowe systemy, uruchamia ich `onStart()`, usuwa systemy zaplanowane do usunięcia, dopisuje subskrypcje do `phaseManager` i sortuje fazy topologicznie.
-3. `entityDispatcher()` dla każdej sceny — realizuje kolejkowanie encji, aktualizuje `entitiesInFrame`, rejestruje markery i tagi oraz uaktualnia cache zapytań po komponentach.
-4. `preUpdate` — wykonuje subskrypcje ustawione dla tej fazy.
-5. `fixedUpdate` — wykonuje się wielokrotnie w pętli, aż `Time.requestFixedUpdate()` przestanie zwracać `true`.
-6. `update` — po aktualizacji czasu i `eventManager.updateTimers(frameDtMs)`.
-7. `postUpdate` — faza kończąca logikę aktualizacji.
-8. `eventsDeferred` — specjalna faza, w której wykonywane są callbacki z opóźnionych zdarzeń i zaplanowanych faz zdarzeniowych.
-9. `render` — wykonywana tylko, gdy `scene.getFlags().isRendered` jest `true`.
+## `Dogma` (manager scen)
 
-### DogmaScene
+Cały stan statyczny:
 
-`DogmaScene` jest najważniejszym modułem. Przechowuje:
+- `scenes: Map<string, DogmaScene>` — aktywne sceny,
+- `scenesToDispatch`, `scenesToRemoved` — bufory,
+- `sceneSorted: DogmaScene[]` — sceny posortowane po `priority`, po tej liście iteruje pętla,
+- `globalSharedData: Map<string, SharedData>` — dane globalne (współdzielone między scenami).
 
-- `components` — mapa komponentów zorganizowana po typie komponentu
-- `systems` — aktywne systemy
-- `systemsToDispatch` — systemy do zainicjowania
-- `systemsToRemove` — systemy do usunięcia
-- `phaseManager` — listy subskrypcji per faza
-- `phaseToDispatch` / `phaseToRemove` — kolejkowanie zmian faz
-- `entityToDispatch` / `entityToRemove` — kolejkowanie encji
-- `sceneSharedData` — dane lokalne sceny
-- `queries`, `queryFilters` — mechanizm zapytań po komponentach
-- `tagsQuery`, `tagsQueryFilter` — mechanizm zapytań po tagach
-- `markerQuery`, `markerMap` — dostęp po markerze
-- `entitiesInFrame` — metadane encji w bieżącej klatce
+`createScene` domyślnie nadaje `priority = scenes.size + scenesToDispatch.size` (kolejny numer), chyba że podasz własny. Nowa scena ląduje w `scenesToDispatch` — jest widoczna dopiero po najbliższym `sceneDispatcher()`.
 
-## Cykl życia sceny
+### `tickAll()` — dokładna kolejność
 
-Scena ma kilka etapów:
-
-1. utworzenie przez `Dogma.createScene()`
-2. dodawanie systemów przez `scene.addSystem()`
-3. rejestracja encji przez `EntityManager.spawnEntity()`
-4. aktualizacja w `Dogma.tickAll()`
-5. usunięcie przez `Dogma.deleteScene()`
-
-## Cykl życia systemu
-
-Systemy są tworzone przez `scene.addSystem(name)`. W trakcie dispatcha sceny:
-
-- systemy z `systemsToDispatch` są przenoszone do `systems`
-- wywoływane jest `onStart()`
-- systemy z `systemsToRemove` są usuwane
-- wywoływane jest `onDestroy()`
-
-### Hooki systemu
-
-Klasa `DogmaSystem` definiuje hooki:
-
-- `onFrameStart()`
-- `onStart()`
-- `onDestroy()`
-- `onFrameEnd()`
-
-W praktyce sam silnik nie wywołuje `onPreUpdate`, `onFixedUpdate`, `onUpdate`, `onPostUpdate` i `onRender` jako osobnych metod, ponieważ te callbacki są dodawane przez subskrypcję fazową.
-
-## Mechanizm faz
-
-Każda faza jest reprezentowana przez listę wpisów typu `PhaseEntry`.
-
-Wpis zawiera:
-
-- `phaseName`
-- `systemName`
-- `callback`
-- `sysRef`
-- `before`
-- `after`
-
-Subskrypcja jest dodawana przez `DogmaSystem.subscribeToPhase(...)` i trafia do `scene.addToScenePhase(...)`.
-
-`DogmaScene.phaseManager` zawiera wszystkie fazy:
-
-- `preUpdate`
-- `fixedUpdate`
-- `update`
-- `postUpdate`
-- `eventsDeferred`
-- `render`
-
-Faza `eventsDeferred` jest specjalna: to w niej wykonywane są callbacki z opóźnionych / odroczonych zdarzeń, zanim `EventManager.flush()` wyczyści kolejki.
-
-### Sortowanie zależności
-
-Po dodaniu/usunięciu subskrypcji lub systemu scena wykonuje sortowanie topologiczne po każdej fazie.
-
-Algorytm wykorzystuje graf zależności:
-
-- `before` tworzy krawędź z bieżącego systemu do celu
-- `after` tworzy krawędź od celu do bieżącego systemu
-
-Jeśli zależności są sprzeczne lub tworzą cykl, silnik rzuca błąd.
-
-### Walidacja
-
-`validatePhaseConstraints()` sprawdza:
-
-- czy system nie ma samego siebie w `before`
-- czy system nie ma samego siebie w `after`
-- czy system nie ma jednocześnie konfliktu `before` i `after` względem tego samego systemu
-
-## Mechanizm encji i komponentów
-
-### Dodawanie encji
-
-`EntityManager.spawnEntity()` dodaje encję do `scene.entityToDispatch`.
-
-W `entityDispatcher()` encja jest:
-
-- dodawana do `entitiesInFrame.inFrame`
-- dodawana do `entitiesInFrame.addedToFrame`
-- rejestrowana w `markerQuery` / `markerMap` jeśli ma marker
-- dodawana do zapytań po tagach
-- dodana do odpowiednich map komponentów
-
-### Usuwanie encji
-
-`EntityManager.removeEntity()` dodaje ID encji do `scene.entityToRemove`.
-
-W `entityDispatcher()` encja jest:
-
-- usuwana z `entitiesInFrame.inFrame`
-- dodana do `removedFromFrame`
-- usuwana z markerów, tagów, komponentów i zapytań
-
-## Query system
-
-### Query po komponentach
-
-`DogmaSystem.query([...])` tworzy lub zwraca zapytanie po komponentach. Mechanizm działa przez:
-
-- `createQuery(key, list)`
-- `getQueryResult(key)`
-
-Zapytanie jest przechowywane jako `Set<Symbol>` zawierający ID encji z wymaganymi komponentami.
-
-### Kaskada i cache danych
-
-Podczas `entityDispatcher()` każda dodana encja aktualizuje cache zapytań oraz `entitiesInFrame`:
-
-- `addedToFrame` — encje dodane w bieżącym ticku
-- `removedFromFrame` — encje usunięte w bieżącym ticku
-- `inFrame` — aktywne encje w scenie
-
-Dzięki temu systemy mogą bezpiecznie odczytywać wyniki zapytań i korzystać z danych o życiu encji w ramach aktualnej klatki.
-
-### Query po tagach
-
-`DogmaSystem.getComponentsWithTags(component, tags)` działa przez:
-
-- `createTagsQuery(key, tags, component)`
-- `getTagsQueryResults(key)`
-
-Działa na bazie `Set<string>` tagów przechowywanych na komponencie.
-
-## Shared data
-
-Systemy mogą przechowywać dane współdzielone:
-
-- lokalne dla sceny: `sceneSharedData`
-- globalne: `Dogma.globalSharedData`
-
-API:
-
-- `setSharedData(type, name, data)`
-- `getSharedData(type, name)`
-- `removeSharedData(type, name)`
-
-## Mechanizm eventów
-
-`EventManager` w `DogmaScene` obsługuje kilka trybów pracy:
-
-- `emitImmediate(eventName, data)` — wykonywane natychmiast w miejscu wywołania.
-- `emitDeferred(eventName, data)` — zapisuje zdarzenie do wewnętrznej kolejki; zostanie obsłużone w fazie `eventsDeferred`.
-- `emitCascade(eventName, data)` — przechowuje dane w `cascadeEvents`, które mogą zostać odczytane później przez inne systemy lub inne fazy tej samej klatki przy pomocy `eventManager.getCascade(eventName)`.
-
-### Subskrypcje
-
-- `events.subscribeToImmediate(eventName, callback)` — rejestruj odbiorcę zdarzeń natychmiastowych.
-- `events.unsubscribeFromImmediate(eventName, ID)` — usuń subskrypcję natychmiastowego zdarzenia.
-- `events.subscribeToDeferred({ eventName, sysRef: this, callback, before?, after? })` — subskrybuj odroczone zdarzenia w fazie `eventsDeferred`.
-- `events.unsubscribeFromDeferred(key)` — usuń subskrypcję odroczonego zdarzenia.
-
-### Przykłady
-
-```ts
-const immediateID = this.events.subscribeToImmediate("DamageTaken", (data) => {
-  // obsługa natychmiastowych efektów
-});
-this.events.emitImmediate("DamageTaken", { amount: 10 });
-this.events.unsubscribeFromImmediate("DamageTaken", immediateID);
+```
+1.  sceneDispatcher()                      // dopnij/usuń sceny, przesortuj sceneSorted po priority
+2.  for scene: scene.systemDispatcher()    // dopnij systemy (onStart), usuń (onDestroy), sortuj fazy
+3.  for scene: scene.entityDispatcher()    // realny spawn/remove encji + aktualizacja cache
+4.  for scene (isActive): phase preUpdate
+5.  while Time.requestFixedUpdate():
+        for scene (isActive): phase fixedUpdate
+6.  Time.switchToUpdateContext()
+7.  for scene (isActive): eventManager.updateTimers(frameDtMs)   // delayed/interval
+8.  for scene (isActive): phase update
+9.  for scene (isActive): phase postUpdate
+10. Time.updateAlpha()                      // alfa interpolacji dla renderu
+11. for scene: phase eventsDeferred; eventManager.flush()   // obsłuż odroczone, potem wyczyść kolejki
+12. for scene (isRendered): phase render
 ```
 
-```ts
-const deferredKey = this.events.subscribeToDeferred({
-  eventName: "SpawnEnemy",
-  sysRef: this,
-  callback: (data) => {
-    // obsługa odroczonego zdarzenia w fazie eventsDeferred
-  },
-  after: ["Physics"],
-});
-this.events.emitDeferred("SpawnEnemy", { type: "orc" });
-this.events.unsubscribeFromDeferred(deferredKey);
-```
+Uwagi:
+
+- Kroki 2 i 3 są rozbite na **osobne pętle po wszystkich scenach** (najpierw wszystkie systemy, potem wszystkie encje) — nie „scena po scenie w całości”.
+- Warunek pomijania: fazy 4–9 sprawdzają `scene.getFlags().isActive`; faza 11 (`eventsDeferred`) leci **zawsze** (ale sam callback sprawdza `entry.sysRef.isActive()`); faza 12 sprawdza `isRendered`.
+- Każdy `PhaseEntry` przed odpaleniem sprawdza `entry.sysRef.isActive()` — nieaktywny system jest cicho pomijany.
+- `updateTimers` jest po `switchToUpdateContext`, więc timery liczą `frameDtMs` z kontekstu update, nie fixed.
+
+---
+
+## `DogmaScene` (najgrubszy plik)
+
+### Główne struktury
 
 ```ts
-this.events.emitCascade("CollisionChain", { source: entityID });
-const cascadeData = this.events.getCascade("CollisionChain");
+components:     Map<string /*componentName*/, Map<Symbol /*entityID*/, DogmaComponent>>
+systems:        Map<string, DogmaSystem>
+phaseManager:   Record<DogmaPhase, PhaseEntry[]>     // subskrypcje per faza (już posortowane)
+
+queries:        Map<string /*"A|B"*/, Set<Symbol>>   // wynik query po komponentach
+queryFilters:   Map<string, ComponentRegistryKeys[]> // definicja query (jakie komponenty)
+
+tagsQuery:       Map<string /*"t1|t2"*/, Set<Symbol>>
+tagsQueryFilter: Map<string /*tag*/, Set<string /*queryKey*/>>  // tag -> które query go dotyczą
+
+markerQuery:    Map<string /*marker*/, Symbol /*entityID*/>
+markerMap:      Map<Symbol /*entityID*/, string /*marker*/>      // odwrotność, do sprzątania
+
+entitiesInFrame: { addedToFrame, removedFromFrame, inFrame }  // Set<Symbol>
 ```
 
-### Opóźnienia i interwały
+Klucz query to **posortowane alfabetycznie nazwy złączone `|`** (`["Phys","Transform"].sort().join("|")` → `"Phys|Transform"`). Sortowanie gwarantuje ten sam klucz niezależnie od kolejności argumentów.
 
-- `emitDelayed({ eventName, data, delaySeconds, mode })` — zarejestruj zdarzenie, które zostanie wysłane po zadanym czasie. Jeśli `mode` to `"immediate"`, po czasie wywoła `emitImmediate`; jeśli `mode` to `"deferred"`, po czasie wywoła `emitDeferred`.
-- `emitInterval({ eventName, data, intervalSeconds, totalSeconds, mode })` — powtarza emisję co `intervalSeconds` aż do wyczerpania `totalSeconds`, używając podanego trybu `mode`.
+### `entityDispatcher()`
 
-`Time.updateTimers(frameDtMs)` jest wywoływane tuż przed fazą `update`, więc opóźnione i interwałowe zdarzenia są rozliczane w tym samym ticku.
+Na starcie czyści `addedToFrame` i `removedFromFrame` (to metadane „co się zdarzyło w tym ticku”), potem realizuje kolejki:
 
-## Uwaga o aktualnym stanie kodu
+**dispatchEntities()** dla każdej encji z `entityToDispatch`:
+1. dopisz ID do `inFrame` i `addedToFrame`,
+2. jeśli ma marker (`!== ""`) → `markerQuery[marker] = ID`, `markerMap[ID] = marker`,
+3. zbuduj klucz z tagów encji i jeśli istnieje `tagsQuery[key]` → dopisz ID,
+4. wrzuć każdy komponent do `components[name]`,
+5. przejrzyj **wszystkie** istniejące `queries` i dopisz ID tam, gdzie encja ma komplet wymaganych komponentów.
 
-W bieżącej implementacji są kilka rzeczy, które warto znać:
+**removeEntities()** — lustrzane sprzątanie: usuwa z `inFrame` (+ `removedFromFrame`), markerów, wszystkich `tagsQuery`, `components` (kasuje pustą mapę typu) i wszystkich `queries`.
 
-- `Dogma.tickAll()` wywołuje `systemDispatcher()` i `entityDispatcher()` przed fazami aktualizacji.
-- `render` jest pomijany, jeśli scena ma `isRendered === false`.
-- `entityDispatcher()` nie aktualizuje jeszcze w pełni zapytań po tagach w sposób tak samo kompletnego jak query po komponentach, co może wymagać dalszego dopracowania.
-- `phaseManager` jest aktualizowany przez kolejkowanie zmian, a sortowanie odbywa się dopiero gdy nastąpią zmiany.
+### `systemDispatcher()`
 
-## Jak rozszerzać Dogmę
+Kolejno: dopnij systemy z `systemsToDispatch` → odpal ich `onStart()` → dopnij `phaseToDispatch` do `phaseManager` → usuń `phaseToRemove` → usuń `systemsToRemove` (odpalając `onDestroy()` i czyszcząc ich subskrypcje z każdej fazy). Na końcu, jeśli cokolwiek się zmieniło (`needSorting`), sortuje **każdą** listę fazy topologicznie.
 
-### Dodanie nowego komponentu
+### Sortowanie topologiczne faz (`sortPhaseByDependencies`) — kod oznaczony `//AI`
 
-1. Utwórz klasę rozszerzającą `DogmaComponent`.
-2. Dodaj ją do `dogmaConfig.components`.
-3. Użyj jej w encjach przez `addComponent("Nazwa", ...args)`.
+Klasyczny Kahn:
+- buduje graf: `before` → krawędź `entry → other`, `after` → krawędź `other → entry`,
+- liczy `inDegree`, kolejkuje węzły o stopniu 0, zdejmuje po kolei,
+- jeśli `sorted.length !== entries.length` → został cykl → `throw` z listą zamieszanych systemów.
 
-### Dodanie nowego systemu
+`validatePhaseConstraints` (wołane przy dodawaniu subskrypcji) łapie wcześniej trywialne sprzeczności: system w swoim własnym `before`/`after`, oraz ten sam system jednocześnie w `before` i `after`.
 
-1. Utwórz klasę rozszerzającą `DogmaSystem`.
-2. Dodaj ją do `dogmaConfig.systems`.
-3. Dodaj do sceny przez `scene.addSystem("Nazwa")`.
-4. Zarejestruj subskrypcję w fazie przez `subscribeToPhase(...)`.
+> Zależności `before`/`after` odnoszą się do `systemName`. Dla subskrypcji deferred `systemName` jest **syntetyczny**: `Event(<eventName>)InSystem(<systemName>)` — patrz EventManager.
 
-### Dodanie nowej fazy
+---
 
-Obecnie lista faz jest sztywno zdefiniowana jako:
+## Encje i komponenty
 
-- `preUpdate`
-- `fixedUpdate`
-- `update`
-- `postUpdate`
-- `eventsDeferred`
-- `render`
+### `DogmaEntity`
 
-Aby dodać nową fazę, trzeba zmodyfikować:
+- `ID: Symbol` — `Symbol(createUUID())`. Tożsamość encji przez referencję symbolu; opis symbolu to UUID (przydatne w komunikatach `assert`).
+- `marker: [string]` — **celowo tablica jednoelementowa**, nie string. Powód: komponenty dostają referencję do tej samej tablicy, więc `setMarker` zmienia marker „widziany” przez wszystkie komponenty encji bez rozsyłania. To samo dotyczy `tags: Set` (wspólna referencja).
+- `addComponent(name, ...args)` — asercja przeciw duplikatom, buduje `InternalDCProps` (`ID`, `tags`, `componentName`, `marker`) i tworzy instancję z `dogmaConfig.components[name]`, doklejając Twoje `args` **po** internalProps.
 
-- typ `DogmaPhase`
-- `phaseManager` w `DogmaScene`
-- logikę `Dogma.tickAll()`
+### `DogmaComponent`
+
+Trzyma prywatnie `entityID`, `entityTags`, `entityMarker` (ta wspólna tablica), `componentName`. Wystawia gettery `.ID`, `.tags`, `.marker`, `.componentName`. Komponent zna swoją encję tylko przez te dane — nie ma wskaźnika na `DogmaEntity`.
+
+### `EntityManager`
+
+Naprawdę cienki: `spawnEntity` → `scene.entityToDispatch.add`, `removeEntity` → `scene.entityToRemove.add`. `cloneEntity` / `moveEntity` są zakomentowane (TODO). Sensownie mogłoby to zniknąć na rzecz eventów (patrz TODO).
+
+---
+
+## System query
+
+### Po komponentach — `getComponentsGroup([...])`
+
+W systemie: liczy klucz (`sort().join("|")`), zwraca `getQueryResult(key)` jeśli jest w cache, inaczej `createQuery(key, list)`.
+
+`createQuery` rejestruje `queries[key]` i `queryFilters[key]`, po czym **od razu wypełnia** wynik: bierze mapę pierwszego komponentu i sprawdza dla każdego ID, czy występuje w mapach pozostałych. Od tego momentu cache jest **utrzymywany przyrostowo** przez `dispatchEntities`/`removeEntities`.
+
+> Sygnatura wymaga `readonly [T, T, ...T[]]` — czyli **minimum dwa** typy komponentów. Do jednego typu użyj `getComponentList`.
+
+### Po tagach — `getComponentsWithTags(component, tags)`
+
+Analogicznie: cache w `tagsQuery`, wypełniane w `createTagsQuery` przez `tagsSet.isSubsetOf(comp.tags)`. Dodatkowo buduje odwrotny indeks `tagsQueryFilter: tag → {queryKeys}`, żeby `updateTagsQuery` (wołane z `addEntityTag`/`removeEntityTag`) mogło punktowo przeliczyć tylko dotknięte query.
+
+### Po markerze — `getComponentWithMarker(marker, component)`
+
+`markerQuery[marker]` → ID → `components[component].get(ID)`.
+
+---
+
+## EventManager
+
+Cztery niezależne mechanizmy, wszystkie per-scena:
+
+| Mechanizm | Struktura | Kiedy odpala | Czyszczenie |
+|-----------|-----------|--------------|-------------|
+| immediate | `immediateEvents: Map<name, Map<Symbol, Subscriber>>` | synchronicznie w `emitImmediate` | subskrypcja żyje do `unsubscribe` |
+| deferred  | `deferredEvents: Map<name, EventData[]>` | callbacki w fazie `eventsDeferred` | `flush()` na końcu ticku |
+| cascade   | `cascadeEvents: Map<name, EventData[]>` | odczyt przez `getCascade` w tej samej klatce | `flush()` na końcu ticku |
+| timery    | `timeEvents: TimeEvent[]` | `updateTimers` przed fazą update | zdejmowane po wygaśnięciu |
+
+Szczegóły:
+
+- **subscribeToDeferred** nie tworzy osobnej listy subskrybentów — rejestruje `PhaseEntry` w fazie `eventsDeferred` z syntetycznym `systemName` (`Event(...)InSystem(...)`). To pozwala odroczonym eventom uczestniczyć w sortowaniu `before`/`after` tak jak zwykłe systemy. Callback iteruje po `deferredEvents[eventName]`.
+- **cascade** to nie tyle „event”, co jednorazowy schowek danych na jedną klatkę (użyty w sandboxie: `Inputs`/`Physics` piszą `"test"` w preUpdate, `Render` czyta w postUpdate).
+- **timery** (`updateTimers`): iteracja od końca (bezpieczne `splice`). Bez `interval` = one-shot. Z `interval` = powtarzaj co `nextTickTime`, aż `remainingTime <= 0`. `mode` decyduje, czy tyknięcie leci przez `emitImmediate` czy `emitDeferred`.
+- `flush()` czyści **cascade i deferred** (immediate i timery nie).
+
+---
+
+## `dogmaConfig` i typowanie
+
+`type.d.ts` deklaruje globalnie typy pochodne od `dogmaConfig`:
+
+```ts
+type ComponentRegistryKeys = keyof typeof dogmaConfig.components;
+type SystemRegistryKeys     = keyof typeof dogmaConfig.systems;
+// + ComponentRegistry, SystemRegistry, DropFirst, DogmaPhase, DogmaConfig
+```
+
+Dzięki temu `addComponent("Transform", ...)` jest w pełni typowane, a `DropFirst<ConstructorParameters<...>>` odcina `internalProps` z sygnatury, żeby użytkownik podawał tylko własne propsy.
+
+> **Znany zapach / bug (todo)**: interfejs `DogmaConfig` w `type.d.ts` wskazuje na `Component`/`System` zamiast `DogmaComponent`/`DogmaSystem`, bo poprawka powoduje pętlę zależności typów. Docelowo do wydzielenia do osobnego pliku.
+
+---
+
+## Znane ograniczenia i pułapki (stan obecny)
+
+1. **`onFrameStart` / `onFrameEnd` nie są wołane.** Są zadeklarowane w `DogmaSystem`, ale `tickAll` ich nie odpala. TODO: wpiąć w pętlę (miejsce na profilowanie/debug per-klatka).
+2. **Brak dodawania/usuwania komponentów w locie.** Encja składa komponenty w konstruktorze; nie ma API do zmiany składu żywej encji. To dlatego `marker`/`tags` mogły być wspólną referencją (patrz komentarz w todo o `[string]`).
+3. **Tag-query dla nowych encji działa tylko na exact-match klucza.** W `dispatchEntities` nowa encja dopisuje się do `tagsQuery[key]` tylko gdy `key` = **wszystkie** jej tagi posortowane. Query po **podzbiorze** tagów istniejącym wcześniej może nie złapać nowej encji, dopóki nie ruszy jej tagów przez `updateTagsQuery`. Do dopracowania.
+4. **Query nie są czyszczone przy usunięciu wszystkich encji** — wpis w `queries`/`queryFilters` zostaje (pusty `Set`). Do rozważenia GC nieużywanych query.
+5. **Brak poolingu** komponentów/encji — każda encja tworzy świeże instancje. Pomysł: reużywać istniejące transformy zamiast alokować setki.
+6. **`getComponentsGroup` — `as const` w typach** jest brzydkie; do wygładzenia.
+7. **Brak `NOT`/exclude w query** (np. „wszystkie `Transform` bez `Rigid`”).
+
+---
+
+## Co dalej (roadmapa z `todo.md`)
+
+- Pakowanie encji do jednego pliku i przenoszenie między scenami (serializacja + `moveEntity`).
+- Singletonowe komponenty na scenę (globalny stan typu „czas świata” bez encji).
+- Relacje parent/child z propagacją danych i poprawną kolejnością liczenia.
+- Wpięcie `onFrameStart`/`onFrameEnd`.
+- Typy `dataEvent` w `this.events` (obecnie brak typowania payloadów eventów).
+- Możliwość `omit` na subskrybencie fazy, żeby nie generować sztucznego eventu fazy.
+- Ewentualne wchłonięcie `EntityManager` do sceny, gdy dojrzeje system eventów.
+
+---
+
+## Jak rozszerzać
+
+**Nowy komponent:** klasa `extends DogmaComponent` (konstruktor `(internalProps, props)`) → dopisz do `dogmaConfig.components` → używaj przez `addComponent("Nazwa", props)`.
+
+**Nowy system:** klasa `extends DogmaSystem` → w `onStart()` `subscribeToPhase(...)` → dopisz do `dogmaConfig.systems` → `scene.addSystem("Nazwa")`.
+
+**Nowa faza:** trzeba ruszyć trzy miejsca — typ `DogmaPhase` (`type.d.ts`), obiekt `phaseManager` (`scene.ts`) i pętlę `tickAll()` (`dogma.ts`), wpinając nową fazę w odpowiednim momencie.

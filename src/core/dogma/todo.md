@@ -8,7 +8,9 @@ system eventow z opcja imidieate i deferred
 
 # Ulepszenia
 
+dodaj przyjmowanie typow jako dataEvent w this.events bo teraz tego nie ma, zapomniales
 pooling obiektow/komponentow? po co mam tworzyc setki transformow dla nowych obiektow jak moge po prostu przypisac juz istniejacy do nowej encji
+powieniens miec not na komponenty, wszystkie transformy ktore nie maja przy okazji rigidu np
 
 ## potencjalne przemyslenia
 
@@ -18,3 +20,7 @@ pooling obiektow/komponentow? po co mam tworzyc setki transformow dla nowych obi
 - czy ja chce lepiej ogarnac gettery na rzeczy jak isActive by faktyczne to gettery byly
 - w getComponentsGroup nie podobam i sie to const w typach, ulepszyc to jakso moge potem
 - zrobic jakos omit na subkryberze fazy by nie bylo eventu fazy
+
+## bugi
+
+nie dziala dogma config bo wskzuje system i component zamiast DogmaSystem i dogmaComponent a jak to zrobie to sie zapetla. Musi byc przeniesione do osbnego moze pliku?

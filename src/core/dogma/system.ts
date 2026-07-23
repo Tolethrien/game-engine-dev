@@ -32,11 +32,11 @@ type UniqueStringTuple<
     : never
   : [];
 
-type SystemComponent<T extends ComponentRegistryKeys> =
+export type SystemComponent<T extends ComponentRegistryKeys> =
   (typeof dogmaConfig.components)[T] extends new (...args: any[]) => infer R
     ? R
     : never;
-type SystemComponentList<T extends ComponentRegistryKeys> = Map<
+export type SystemComponentList<T extends ComponentRegistryKeys> = Map<
   Symbol,
   SystemComponent<T>
 >;

@@ -14,6 +14,8 @@ export default class Render extends DogmaSystem {
     });
   }
   private renderScene() {
+    performance.mark("render-start");
+    // ... Twój ciężki kod fizyki ...
     const ev = this.events.getCascade("test");
     console.log(ev);
     const alpha = Time.getAlpha();
@@ -26,5 +28,7 @@ export default class Render extends DogmaSystem {
 
       Engine.ctx.fillRect(renderX, renderY, size.width, size.height);
     });
+    performance.mark("render-end");
+    performance.measure("System Renderu", "render-start", "render-end");
   }
 }
