@@ -6,13 +6,13 @@ import { dogmaConfig } from "@/sandbox/configs";
 
 export interface InternalDSProps {
   scene: Scene;
-  systemName: SystemRegistryKeys;
+  systemName: DogmaSystemRegistryKeys;
 }
 interface PhaseSubscriber {
   phase: DogmaPhase;
   callback: () => void;
-  after?: SystemRegistryKeys[];
-  before?: SystemRegistryKeys[];
+  after?: DogmaSystemRegistryKeys[];
+  before?: DogmaSystemRegistryKeys[];
 }
 
 type UniqueStringTuple<
@@ -32,18 +32,18 @@ type UniqueStringTuple<
     : never
   : [];
 
-export type SystemComponent<T extends ComponentRegistryKeys> =
+export type SystemComponent<T extends DogmaComponentRegistryKeys> =
   (typeof dogmaConfig.components)[T] extends new (...args: any[]) => infer R
     ? R
     : never;
-export type SystemComponentList<T extends ComponentRegistryKeys> = Map<
+export type SystemComponentList<T extends DogmaComponentRegistryKeys> = Map<
   Symbol,
   SystemComponent<T>
 >;
 export default abstract class DogmaSystem {
   private systemActive: boolean = true;
   declare private parentScene: Scene;
-  declare public readonly systemName: SystemRegistryKeys;
+  declare public readonly systemName: DogmaSystemRegistryKeys;
   public constructor({ scene, systemName }: InternalDSProps) {
     this.parentScene = scene;
     this.systemName = systemName;
@@ -92,14 +92,14 @@ export default abstract class DogmaSystem {
   }
 
   /**@description returns full list of specific components in frame */
-  public getComponentList<T extends ComponentRegistryKeys>(name: T) {
+  public getComponentList<T extends DogmaComponentRegistryKeys>(name: T) {
     return this.parentScene.getComponentList(name) as
       | SystemComponentList<T>
       | undefined;
   }
 
   /**@description returns specific component from components list */
-  public getComponent<T extends ComponentRegistryKeys>(
+  public getComponent<T extends DogmaComponentRegistryKeys>(
     ID: Symbol,
     componentName: T,
   ) {
@@ -110,7 +110,7 @@ export default abstract class DogmaSystem {
 
   /**@description returns and cache list of entities ID's with this specific component and tags */
   public getComponentsWithTags<
-    T extends ComponentRegistryKeys,
+    T extends DogmaComponentRegistryKeys,
     const U extends readonly [string, ...string[]],
   >(component: T, tags: U & UniqueStringTuple<U>) {
     const key = tags.sort().join("|");
@@ -120,7 +120,7 @@ export default abstract class DogmaSystem {
   }
 
   /**@description returns and cache specific ID of a specific Entity with this marker */
-  public getComponentWithMarker<T extends ComponentRegistryKeys>(
+  public getComponentWithMarker<T extends DogmaComponentRegistryKeys>(
     marker: string,
     componentName: T,
   ) {
@@ -132,7 +132,7 @@ export default abstract class DogmaSystem {
 
   /**@description returns and cache list of entities ID's with this specific combination of components */
   public getComponentsGroup<
-    T extends ComponentRegistryKeys,
+    T extends DogmaComponentRegistryKeys,
     const U extends readonly [T, T, ...T[]],
   >(list: U & UniqueStringTuple<U>) {
     const key = list.sort().join("|");

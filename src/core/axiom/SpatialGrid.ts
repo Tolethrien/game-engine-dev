@@ -1,14 +1,14 @@
 const CELL_KEY_OFFSET = 1 << 15;
 type SpatialGridEntry<T> = { cellKeys: number[]; item: SpatialGridItem<T> };
 type SpatialGridItem<T> = {
-  id: string | number;
+  id: Symbol;
   bounds: Box | BoxAABB;
   data: T;
 };
 export default class SpatialGrid<T> {
   private cellSize: Size2D;
   private cells: Map<number, SpatialGridItem<T>[]> = new Map();
-  private registry: Map<string | number, SpatialGridEntry<T>> = new Map();
+  private registry: Map<Symbol, SpatialGridEntry<T>> = new Map();
 
   constructor(cellSize: Size2D) {
     this.cellSize = cellSize;
@@ -51,7 +51,7 @@ export default class SpatialGrid<T> {
     this.registry.set(item.id, { cellKeys, item });
   }
 
-  remove(id: string | number) {
+  remove(id: Symbol) {
     const entry = this.registry.get(id);
     if (!entry) return false;
     for (const key of entry.cellKeys) this.removeFromCell(key, entry.item);
@@ -59,7 +59,7 @@ export default class SpatialGrid<T> {
     return true;
   }
 
-  move(id: string | number, newBounds: Box | BoxAABB) {
+  move(id: Symbol, newBounds: Box | BoxAABB) {
     const entry = this.registry.get(id);
     if (!entry) return false;
 
@@ -84,7 +84,7 @@ export default class SpatialGrid<T> {
       range,
       this.cellSize,
     );
-    const seen = new Set<string | number>();
+    const seen = new Set<Symbol>();
     const result: T[] = [];
 
     for (let cx = minCellX; cx <= maxCellX; cx++) {

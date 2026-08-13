@@ -4,7 +4,7 @@ import FrameSpatialGrid from "@/core/axiom/spatialGridFrame";
 const canvas = document.getElementById("gameWindow") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 
-type Body = { id: number; x: number; y: number; r: number };
+type Body = { id: Symbol; x: number; y: number; r: number };
 let nextId = 1;
 let bodies: Body[] = [];
 
@@ -87,7 +87,7 @@ canvas.addEventListener("mousedown", (e) => {
     return;
   }
 
-  const body: Body = { id: nextId++, x, y, r: brushRadius };
+  const body: Body = { id: Symbol(), x, y, r: brushRadius };
   bodies.push(body);
   if (mode === "persistent")
     persistentGrid.insert({ id: body.id, bounds: aabbOf(body), data: body });

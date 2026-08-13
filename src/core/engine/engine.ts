@@ -2,6 +2,7 @@ import "@/css/index.css";
 import { assert } from "@utils/utils";
 import InputManager from "@engine/inputManager";
 import Time from "@engine/time";
+import Pragma from "../pragma/pragma";
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
   declare private static context: CanvasRenderingContext2D;
@@ -26,7 +27,7 @@ export default class Engine {
     Time.update(currentTime);
 
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
+    Pragma.update();
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }
 

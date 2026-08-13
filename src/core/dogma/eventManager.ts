@@ -10,8 +10,8 @@ interface DeferredSubscriber {
   eventName: string;
   sysRef: DogmaSystem;
   callback: (EventData: EventData) => void;
-  after?: SystemRegistryKeys[];
-  before?: SystemRegistryKeys[];
+  after?: DogmaSystemRegistryKeys[];
+  before?: DogmaSystemRegistryKeys[];
 }
 type TimeMode = "immediate" | "deferred";
 interface TimeEvent {
@@ -83,7 +83,7 @@ export default class EventManager {
 
   public subscribeToDeferred(subscriber: DeferredSubscriber) {
     const key =
-      `Event(${subscriber.eventName})InSystem(${subscriber.sysRef.systemName})` as SystemRegistryKeys;
+      `Event(${subscriber.eventName})InSystem(${subscriber.sysRef.systemName})` as DogmaSystemRegistryKeys;
     this.parentScene.addToDeferred({
       phaseName: "eventsDeferred",
       after: new Set(subscriber.after ?? []),
@@ -101,7 +101,7 @@ export default class EventManager {
   public unsubscribeFromDeferred(key: string) {
     this.parentScene.removeFromDeferred({
       phaseName: "eventsDeferred",
-      systemName: key as SystemRegistryKeys,
+      systemName: key as DogmaSystemRegistryKeys,
     });
   }
 

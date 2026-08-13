@@ -11,9 +11,9 @@ export default abstract class DogmaEntity {
     this.ID = Symbol(createUUID());
     this.marker = [""];
   }
-  public addComponent<T extends keyof ComponentRegistry>(
+  public addComponent<T extends keyof DogmaComponentRegistry>(
     name: T,
-    ...args: DropFirst<ConstructorParameters<ComponentRegistry[T]>>
+    ...args: DropFirst<ConstructorParameters<DogmaComponentRegistry[T]>>
   ) {
     assert(
       !this.components.has(name),

@@ -62,15 +62,29 @@ export default class Vec2 {
     return this;
   }
 
-  add(v: Vec2) {
-    this._x += v._x;
-    this._y += v._y;
+  add(v: Vec2): this;
+  add(x: number, y: number): this;
+  add(vOrX: Vec2 | number, y?: number) {
+    if (typeof vOrX === "number") {
+      this._x += vOrX;
+      this._y += y ?? 0;
+    } else {
+      this._x += vOrX._x;
+      this._y += vOrX._y;
+    }
     return this;
   }
 
-  sub(v: Vec2) {
-    this._x -= v._x;
-    this._y -= v._y;
+  sub(v: Vec2): this;
+  sub(x: number, y: number): this;
+  sub(vOrX: Vec2 | number, y?: number) {
+    if (typeof vOrX === "number") {
+      this._x -= vOrX;
+      this._y -= y ?? 0;
+    } else {
+      this._x -= vOrX._x;
+      this._y -= vOrX._y;
+    }
     return this;
   }
 

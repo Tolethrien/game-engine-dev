@@ -17,15 +17,15 @@ export interface DogmaSceneFlags {
 // }
 interface PhaseEntry {
   phaseName: DogmaPhase;
-  systemName: SystemRegistryKeys;
+  systemName: DogmaSystemRegistryKeys;
   callback: () => void;
   sysRef: DogmaSystem;
-  before: Set<SystemRegistryKeys>;
-  after: Set<SystemRegistryKeys>;
+  before: Set<DogmaSystemRegistryKeys>;
+  after: Set<DogmaSystemRegistryKeys>;
 }
 interface PhaseRemoveEntry {
   phaseName: DogmaPhase;
-  systemName: SystemRegistryKeys;
+  systemName: DogmaSystemRegistryKeys;
 }
 export type PartialDSFlags = Partial<DogmaSceneFlags>;
 export default class DogmaScene {
@@ -35,7 +35,7 @@ export default class DogmaScene {
   public readonly entityToDispatch: Set<DogmaEntity> = new Set();
   public readonly entityToRemove: Set<DogmaEntity["ID"]> = new Set();
   public readonly systemsToDispatch: Map<string, DogmaSystem> = new Map();
-  public readonly systemsToRemove: Set<SystemRegistryKeys> = new Set();
+  public readonly systemsToRemove: Set<DogmaSystemRegistryKeys> = new Set();
   public readonly phaseToDispatch: PhaseEntry[] = [];
   public readonly phaseToRemove: PhaseRemoveEntry[] = [];
   private readonly sceneName: string;
@@ -43,7 +43,7 @@ export default class DogmaScene {
   public readonly eventManager: EventManager;
 
   private readonly queries: Map<string, Set<Symbol>> = new Map();
-  private readonly queryFilters: Map<string, ComponentRegistryKeys[]> =
+  private readonly queryFilters: Map<string, DogmaComponentRegistryKeys[]> =
     new Map();
   private readonly markerQuery: Map<string, Symbol> = new Map();
   private readonly markerMap: Map<Symbol, string> = new Map();
@@ -92,7 +92,7 @@ export default class DogmaScene {
   public getAllSystems() {
     return this.systems;
   }
-  public getSystem(name: SystemRegistryKeys) {
+  public getSystem(name: DogmaSystemRegistryKeys) {
     return this.systems.get(name);
   }
   public getPhaseSubscribers(phase: DogmaPhase) {
@@ -104,7 +104,7 @@ export default class DogmaScene {
   public getMarkerQuery(marker: string) {
     return this.markerQuery.get(marker);
   }
-  public createQuery(key: string, list: ComponentRegistryKeys[]) {
+  public createQuery(key: string, list: DogmaComponentRegistryKeys[]) {
     const results = new Set<Symbol>();
 
     this.queries.set(key, results);
@@ -140,7 +140,7 @@ export default class DogmaScene {
   public createTagsQuery(
     key: string,
     tags: string[],
-    component: ComponentRegistryKeys,
+    component: DogmaComponentRegistryKeys,
   ) {
     const results = new Set<Symbol>();
     const tagsSet = new Set(tags);
@@ -175,7 +175,7 @@ export default class DogmaScene {
     });
   }
 
-  public addSystem<T extends SystemRegistryKeys>(name: T) {
+  public addSystem<T extends DogmaSystemRegistryKeys>(name: T) {
     assert(
       !this.systems.has(name) && !this.systemsToDispatch.has(name),
       `Trying to add multiple instance of System: ${name} to scene: ${this.sceneName}`,
@@ -189,7 +189,7 @@ export default class DogmaScene {
     ) => DogmaSystem)(internalProps);
     this.systemsToDispatch.set(name, system);
   }
-  public removeSystem<T extends SystemRegistryKeys>(name: T) {
+  public removeSystem<T extends DogmaSystemRegistryKeys>(name: T) {
     this.systemsToRemove.add(name);
   }
   public addToScenePhase(phaseEntry: PhaseEntry) {

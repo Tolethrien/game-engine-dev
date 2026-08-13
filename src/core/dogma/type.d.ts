@@ -11,9 +11,9 @@ declare global {
     | "render"
     | "update"
     | "eventsDeferred";
-  type ComponentRegistryKeys = keyof typeof dogmaConfig.components;
-  type ComponentRegistry = typeof dogmaConfig.components;
-  type SystemRegistryKeys = keyof typeof dogmaConfig.systems;
-  type SystemRegistry = typeof dogmaConfig.systems;
+  type DogmaComponentRegistryKeys = keyof typeof dogmaConfig.components;
+  type DogmaComponentRegistry = typeof dogmaConfig.components;
+  type DogmaSystemRegistryKeys = keyof typeof dogmaConfig.systems;
+  type DogmaSystemRegistry = typeof dogmaConfig.systems;
   type DropFirst<T extends any[]> = T extends [any, ...infer Rest] ? Rest : [];
 }

@@ -44,12 +44,47 @@ export default class Grid {
     return tile.y * gridWidth + tile.x;
   }
 
+  //ISO
+  static isoWorldToTile(position: Position2D, tileSize: Size2D): Position2D {
+    const halfW = tileSize.width / 2;
+    const halfH = tileSize.height / 2;
+    const x = (position.x / halfW + position.y / halfH) / 2;
+    const y = (position.y / halfH - position.x / halfW) / 2;
+    return { x: Math.floor(x), y: Math.floor(y) };
+  }
+
+  static isoTileToWorld(tile: Position2D, tileSize: Size2D): Position2D {
+    return {
+      x: (tile.x - tile.y) * (tileSize.width / 2),
+      y: (tile.x + tile.y) * (tileSize.height / 2),
+    };
+  }
+
+  static isoTileCenterToWorld(tile: Position2D, tileSize: Size2D): Position2D {
+    const top = Grid.isoTileToWorld(tile, tileSize);
+    return { x: top.x, y: top.y + tileSize.height / 2 };
+  }
+
+  static isoSnapToGrid(position: Position2D, tileSize: Size2D): Position2D {
+    const tile = Grid.isoWorldToTile(position, tileSize);
+    return Grid.isoTileToWorld(tile, tileSize);
+  }
+
+  static isoSnapToGridCenter(
+    position: Position2D,
+    tileSize: Size2D,
+  ): Position2D {
+    const tile = Grid.isoWorldToTile(position, tileSize);
+    return Grid.isoTileCenterToWorld(tile, tileSize);
+  }
+
   static indexToTile(index: number, gridWidth: number): Position2D {
     return {
       x: index % gridWidth,
       y: Math.floor(index / gridWidth),
     };
   }
+  
   static generateGrid<T = Position2D>({
     gridSize,
     tileSize,
@@ -61,6 +96,28 @@ export default class Grid {
       for (let x = 0; x < gridSize.width; x++) {
         const tile = { x, y };
         const position = Grid.tileToWorld(tile, tileSize);
+        const index = Grid.tileToIndex(tile, gridSize.width);
+        result.push(
+          callback
+            ? callback({ tilePixelPos: position, tileGridPos: tile, index })
+            : (position as T),
+        );
+      }
+    }
+
+    return result;
+  }
+  static generateIsoGrid<T = Position2D>({
+    gridSize,
+    tileSize,
+    callback,
+  }: GridProps<T>): T[] {
+    const result: T[] = [];
+
+    for (let y = 0; y < gridSize.height; y++) {
+      for (let x = 0; x < gridSize.width; x++) {
+        const tile = { x, y };
+        const position = Grid.isoTileToWorld(tile, tileSize);
         const index = Grid.tileToIndex(tile, gridSize.width);
         result.push(
           callback
