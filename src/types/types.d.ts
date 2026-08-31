@@ -1,5 +1,7 @@
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
+declare const PROFILER_WINDOW_VITE_DEV_SERVER_URL: string;
+declare const PROFILER_WINDOW_VITE_NAME: string;
 declare module "*.png" {
   const value: string;
   export default value;

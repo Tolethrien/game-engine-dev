@@ -1,0 +1,80 @@
+#debugMenu {
+  position: fixed;
+  left: 0%;
+  top: 0;
+  width: 100vw;
+  display: flex;
+  flex-direction: row;
+  gap: 10%;
+  background-color: rgba(0, 0, 0, 0.755);
+}
+.menuButtons {
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
+  align-items: center;
+  justify-content: center;
+  button {
+    color: wheat;
+  }
+}
+.logo {
+  pointer-events: none;
+  display: flex;
+  gap: 0.3em;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  font-size: larger;
+  font-weight: 600;
+  color: wheat;
+  img {
+    width: 30px;
+  }
+  span {
+    font-size: small;
+    color: rgb(190, 177, 154);
+    transform: translateY(-20%);
+  }
+}
+.subMenu {
+  position: relative;
+}
+.subMenuButton {
+  padding: 3px 5px;
+}
+.checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0px 5px;
+}
+.floatingMenu {
+  position: absolute;
+  left: 0%;
+  top: 125%;
+  max-height: 550px;
+  overflow-y: auto;
+  display: inline-block;
+  background-color: rgba(59, 59, 59, 0.755);
+}
+.debugSlider {
+  color: wheat;
+  font-weight: 600;
+  padding: 0px 6px;
+  border: 1px solid black;
+}
+.titleText {
+  font-size: large;
+  color: coral;
+}
+.debugColor {
+  .debugColorName {
+    white-space: no-wrap;
+    display: flex;
+    color: wheat;
+  }
+}
+.hidden {
+  display: none !important;
+}

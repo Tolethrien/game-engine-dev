@@ -4,7 +4,21 @@ export default class AxiomColor {
     const toHex = (n: number) => Math.round(n).toString(16).padStart(2, "0");
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   }
-
+  static randomRGBA(): RGBA {
+    return [
+      Math.random() * 255 + 1,
+      Math.random() * 255 + 1,
+      Math.random() * 255 + 1,
+      Math.random() * 255 + 1,
+    ];
+  }
+  static randomRGB(): RGB {
+    return [
+      Math.random() * 255 + 1,
+      Math.random() * 255 + 1,
+      Math.random() * 255 + 1,
+    ];
+  }
   static rgbaToHex([r, g, b, a]: RGBA): string {
     const toHex = (n: number) => Math.round(n).toString(16).padStart(2, "0");
     return `#${toHex(r)}${toHex(g)}${toHex(b)}${toHex(a * 255)}`;

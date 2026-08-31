@@ -5,6 +5,7 @@ import path from "path";
 export default defineConfig(({ mode }) => {
   const isProd = mode === "production";
   return {
+    cacheDir: "node_modules/.vite/main_window",
     assetsInclude: ["src/assets/*"],
     resolve: {
       alias: {

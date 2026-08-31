@@ -73,3 +73,27 @@ export class Timer {
     this.callback();
   }
 }
+export class SharedData {
+  private storage: Map<string, any> = new Map();
+  public add<T>(name: string, data: T) {
+    if (this.storage.has(name)) {
+      console.warn(
+        `sharedDataStorage already has key:${name}, use set instead to modify data`,
+      );
+      return;
+    }
+    this.storage.set(name, data);
+  }
+  public set<T>(name: string, data: T) {
+    this.storage.set(name, data);
+  }
+  public get<T>(name: string) {
+    return this.storage.get(name) as T | undefined;
+  }
+  public delete(name: string) {
+    this.storage.delete(name);
+  }
+  public has(name: string) {
+    return this.storage.has(name);
+  }
+}

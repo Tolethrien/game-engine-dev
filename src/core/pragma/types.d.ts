@@ -1,16 +1,14 @@
-import { pragmaConfig } from "@sandbox/configs";
 import { EnginePhase } from "./pragma";
 import PragmaComponent from "./component";
 declare global {
-  interface PragmaConfig {
-    components: Record<string, new (...args: any[]) => Component>;
-    systems: Record<string, new (...args: any[]) => System>;
-  }
   type PragmaPhase = keyof typeof EnginePhase;
-  type PragmaComponentRegistryKeys = keyof typeof pragmaConfig.components;
-  type PragmaComponentRegistry = typeof pragmaConfig.components;
-  type PragmaSystemRegistryKeys = keyof typeof pragmaConfig.systems;
-  type PragmaSystemRegistry = typeof pragmaConfig.systems;
+  interface InternalPCProps {
+    actor: PragmaActor;
+  }
+  type PragmaComponentClass<T extends PragmaComponent = PragmaComponent> = new (
+    props: InternalPCProps,
+    ...args: any[]
+  ) => T;
   type DropFirst<T extends any[]> = T extends [any, ...infer Rest] ? Rest : [];
   type IteratedPragmaPhases = Exclude<
     PragmaPhase,

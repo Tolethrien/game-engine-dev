@@ -1,0 +1,36 @@
+{
+  "PragmaComponent": {
+    "scope": "typescript",
+    "prefix": "pragmaSnipComponent",
+    "body": [
+      "import PragmaComponent from \"@/core/pragma/component\";",
+      "",
+      "interface ${1:Name}Props{",
+      "}",
+      "",
+      "export default class ${1:Name} extends PragmaComponent {",
+      "  constructor(internal: InternalPCProps,props: ${1:Name}Props) {",
+      "    super(internal);",
+      "  }",
+      "",
+      "  $0",
+      "}",
+      "",
+    ],
+  },
+  "PragmaActor": {
+    "scope": "typescript",
+    "prefix": "pragmaSnipActor",
+    "body": [
+      "import PragmaActor from \"@/core/pragma/actor\";",
+      "",
+      "interface ${1:Name}Props {}",
+      "",
+      "export default class ${1:Name} extends PragmaActor {",
+      " constructor(props: ${1:Name}Props) {",
+      "     super();",
+      " }",
+      "}",
+    ],
+  },
+}

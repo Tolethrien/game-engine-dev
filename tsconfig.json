@@ -19,6 +19,8 @@
     },
     "moduleResolution": "nodenext",
     "resolveJsonModule": true,
-    "types": ["@webgpu/types"]
+    "types": ["@webgpu/types"],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js"
   }
 }

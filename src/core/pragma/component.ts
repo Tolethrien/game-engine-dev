@@ -1,35 +1,32 @@
 import PragmaActor from "./actor";
-import { EnginePhase } from "./pragma";
+import { EnginePhase, ITERATED_PHASES } from "./pragma";
 
-export interface InternalPCProps {
-  actor: PragmaActor;
-  componentName: PragmaComponentRegistryKeys;
-}
 abstract class PragmaComponent {
   public readonly phases: EnginePhase;
   public readonly actor: PragmaActor;
-  public readonly name: PragmaComponentRegistryKeys;
+  public readonly name: string;
   private isComponentEnabled: boolean = true;
 
   constructor(internal: InternalPCProps) {
     this.actor = internal.actor;
-    this.name = internal.componentName;
+    this.name = this.constructor.name;
     let mask = EnginePhase.none;
-    if (this.fixedUpdate) mask |= EnginePhase.fixedUpdate;
-    if (this.preUpdate) mask |= EnginePhase.preUpdate;
-    if (this.update) mask |= EnginePhase.update;
-    if (this.postUpdate) mask |= EnginePhase.postUpdate;
-    if (this.render) mask |= EnginePhase.render;
+    for (const phase of ITERATED_PHASES) {
+      if (this[phase]) mask |= EnginePhase[phase];
+    }
     this.phases = mask;
   }
   public destroySelf() {
-    this.actor.destroyComponent(this.name);
+    this.actor.destroyComponent(this.constructor as PragmaComponentClass);
   }
-  public getSibling(name: PragmaComponentRegistryKeys) {
-    return this.actor.getComponent(name);
+  public getSibling<T extends PragmaComponentClass>(Ctor: T) {
+    return this.actor.getComponent(Ctor);
   }
-  public getScene() {
+  public get scene() {
     return this.actor.scene;
+  }
+  public get tags() {
+    return this.actor.tags;
   }
   public setEnabled(enable: boolean) {
     this.isComponentEnabled = enable;
@@ -55,12 +52,16 @@ abstract class PragmaComponent {
   public offSceneEvent<T>(name: string, cb: (data: T) => void) {
     this.actor.scene.events.off(name, cb);
   }
+  public get systemSharedData() {
+    return this.scene.sharedData;
+  }
 }
 
 interface PragmaComponent {
   awake?(): void;
   start?(): void;
   destroy?(): void;
+  preFixedUpdate?(): void;
   fixedUpdate?(): void;
   preUpdate?(): void;
   update?(): void;

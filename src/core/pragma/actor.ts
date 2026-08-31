@@ -1,13 +1,13 @@
 import { assert } from "@/utils/utils";
-import PragmaComponent, { InternalPCProps } from "./component";
-import { pragmaConfig } from "@/sandbox/configs";
+import PragmaComponent from "./component";
+import Transform from "@/sandbox/components/transform";
 import PragmaScene from "./scene";
-import { EnginePhase } from "./pragma";
+import Pragma, { EnginePhase, ITERATED_PHASES } from "./pragma";
 import { EventBus } from "./eventManager";
 
 export default abstract class PragmaActor {
   public readonly ID: Symbol;
-  private components = new Map<PragmaComponentRegistryKeys, PragmaComponent>();
+  private components = new Map<PragmaComponentClass, PragmaComponent>();
   public readonly tags: Set<string> = new Set();
   private marker: string | undefined = undefined;
   private isVisible: boolean = true;
@@ -17,64 +17,55 @@ export default abstract class PragmaActor {
   private pendingToRemove: Set<PragmaComponent> = new Set();
   declare public scene: PragmaScene;
   public events = new EventBus();
-  public phaseRegistrator: PragmaPhaseRegistry = {
-    fixedUpdate: new Set(),
-    preUpdate: new Set(),
-    update: new Set(),
-    postUpdate: new Set(),
-    render: new Set(),
-  };
+  public phaseRegistrator: PragmaPhaseRegistry = Object.fromEntries(
+    ITERATED_PHASES.map((phase) => [phase, new Set<PragmaComponent>()]),
+  ) as PragmaPhaseRegistry;
 
   constructor() {
     this.ID = Symbol(crypto.randomUUID());
-    this.addComponent("Transform");
+    this.addComponent(Transform);
   }
-  public addComponent<T extends PragmaComponentRegistryKeys>(
-    name: T,
-    ...args: DropFirst<ConstructorParameters<PragmaComponentRegistry[T]>>
+  public addComponent<T extends PragmaComponentClass>(
+    ctor: T,
+    ...args: DropFirst<ConstructorParameters<T>>
   ) {
     assert(
-      !this.components.has(name),
-      `Trying to add multiple instance of Component: ${name} to Actor: ${this.constructor.name}, ID:${this.ID.description}`,
+      !this.components.has(ctor),
+      `Trying to add multiple instance of Component: ${ctor.name} to Actor: ${this.constructor.name}, ID:${this.ID.description}`,
     );
-    const internalProps: InternalPCProps = {
-      actor: this,
-      componentName: name,
-    };
-
-    const component = new (pragmaConfig.components[name] as new (
-      ...args: unknown[]
-    ) => PragmaComponent)(internalProps, ...args);
+    const component = new ctor({ actor: this }, ...args) as InstanceType<T>;
 
     if (this.isLive) {
       this.scene.actorsDirty.add(this);
       this.pendingToAdd.add(component);
     } else this.addToLocalPhases(component);
 
-    this.components.set(name, component);
+    this.components.set(ctor, component);
+    return component;
   }
-  public destroyComponent(name: PragmaComponentRegistryKeys) {
-    assert(name !== "Transform", `cannot remove Transform.`);
-    const component = this.components.get(name);
+  public get transform() {
+    return this.components.get(Transform)! as Transform;
+  }
+  public destroyComponent<T extends PragmaComponentClass>(ctor: T) {
+    assert(ctor !== (Transform as unknown as T), `cannot remove Transform.`);
+    const component = this.components.get(ctor);
     if (!component) {
       console.warn(
-        `there in no component with name: ${name} in actor: ${this.ID}`,
+        `there in no component with name: ${ctor.name} in actor: ${this.ID}`,
       );
       return;
     }
-    this.components.delete(name);
+    this.components.delete(ctor);
     if (this.isLive) {
       this.scene.actorsDirty.add(this);
       this.pendingToRemove.add(component);
     } else this.deleteFromLocalPhases(component);
   }
-  public getComponent<T extends PragmaComponentRegistryKeys>(name: T) {
-    return this.components.get(name) as
-      | InstanceType<PragmaComponentRegistry[T]>
-      | undefined;
+  public getComponent<T extends PragmaComponentClass>(ctor: T) {
+    return this.components.get(ctor) as InstanceType<T> | undefined;
   }
-  public hasComponent(name: PragmaComponentRegistryKeys) {
-    return this.components.has(name);
+  public hasComponent(ctor: PragmaComponentClass) {
+    return this.components.has(ctor);
   }
   public getAllComponents() {
     return this.components.values();
@@ -115,16 +106,11 @@ export default abstract class PragmaActor {
     this.pendingToAdd.clear();
   }
   public onAwake() {
-    if (this.phaseRegistrator.fixedUpdate.size > 0)
-      this.scene.actorsWithFixedUpdate.add(this);
-    if (this.phaseRegistrator.preUpdate.size > 0)
-      this.scene.actorsWithPreUpdate.add(this);
-    if (this.phaseRegistrator.update.size > 0)
-      this.scene.actorsWithUpdate.add(this);
-    if (this.phaseRegistrator.postUpdate.size > 0)
-      this.scene.actorsWithPostUpdate.add(this);
-    if (this.phaseRegistrator.render.size > 0)
-      this.scene.actorsWithRender.add(this);
+    for (const phase of ITERATED_PHASES) {
+      if (this.phaseRegistrator[phase].size > 0) {
+        this.scene.actorsWithPhase[phase].add(this);
+      }
+    }
     this.components.forEach((component) => component.awake?.());
     this.isLive = true;
   }
@@ -133,52 +119,29 @@ export default abstract class PragmaActor {
   }
   public onDestroy() {
     this.components.forEach((component) => component.destroy?.());
+    for (const phase of ITERATED_PHASES)
+      this.scene.actorsWithPhase[phase].delete(this);
     this.isLive = false;
   }
   private deleteFromLocalPhases(component: PragmaComponent) {
-    this.phaseRegistrator.fixedUpdate.delete(component);
-    this.phaseRegistrator.preUpdate.delete(component);
-    this.phaseRegistrator.update.delete(component);
-    this.phaseRegistrator.postUpdate.delete(component);
-    this.phaseRegistrator.render.delete(component);
+    for (const phase of ITERATED_PHASES) {
+      this.phaseRegistrator[phase].delete(component);
+    }
   }
   private addToLocalPhases(component: PragmaComponent) {
-    if (component.phases & EnginePhase.fixedUpdate)
-      this.phaseRegistrator.fixedUpdate.add(component);
-    if (component.phases & EnginePhase.preUpdate)
-      this.phaseRegistrator.preUpdate.add(component);
-    if (component.phases & EnginePhase.update)
-      this.phaseRegistrator.update.add(component);
-    if (component.phases & EnginePhase.postUpdate)
-      this.phaseRegistrator.postUpdate.add(component);
-    if (component.phases & EnginePhase.render)
-      this.phaseRegistrator.render.add(component);
+    for (const phase of ITERATED_PHASES) {
+      if (component.phases & EnginePhase[phase]) {
+        this.phaseRegistrator[phase].add(component);
+      }
+    }
   }
   private updateScenePhases() {
-    //TODO: to sie da ujednolisci nazwowo by zrobic loopa
-    const preList = this.scene.actorsWithPreUpdate;
-    this.phaseRegistrator.preUpdate.size > 0
-      ? preList.add(this)
-      : preList.delete(this);
-
-    const fixedList = this.scene.actorsWithFixedUpdate;
-    this.phaseRegistrator.fixedUpdate.size > 0
-      ? fixedList.add(this)
-      : fixedList.delete(this);
-
-    const updateList = this.scene.actorsWithUpdate;
-    this.phaseRegistrator.update.size > 0
-      ? updateList.add(this)
-      : updateList.delete(this);
-
-    const postList = this.scene.actorsWithPostUpdate;
-    this.phaseRegistrator.postUpdate.size > 0
-      ? postList.add(this)
-      : postList.delete(this);
-
-    const renderList = this.scene.actorsWithRender;
-    this.phaseRegistrator.render.size > 0
-      ? renderList.add(this)
-      : renderList.delete(this);
+    for (const phase of ITERATED_PHASES) {
+      const set = this.scene.actorsWithPhase[phase];
+      this.phaseRegistrator[phase].size > 0 ? set.add(this) : set.delete(this);
+    }
+  }
+  public selfDestroy() {
+    this.scene.deleteActor(this);
   }
 }

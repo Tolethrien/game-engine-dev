@@ -1,3 +1,5 @@
 import { IDebug } from "./interfaces";
-
-export const debug: IDebug = {};
+import { prodPerformance } from "./modules/performance";
+export const debug: IDebug = {
+  performance: prodPerformance,
+};

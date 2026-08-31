@@ -1,5 +1,6 @@
 import PragmaActor from "./actor";
-import { EventBus } from "./eventManager";
+import { EventBus, SharedData } from "./eventManager";
+import { ITERATED_PHASES } from "./pragma";
 
 interface SceneProps {
   sceneName: string;
@@ -10,14 +11,17 @@ export default class PragmaScene {
   public active: boolean;
   private actorsInScene: Map<Symbol, PragmaActor> = new Map();
   public actorsDirty: Set<PragmaActor> = new Set();
-  public readonly actorsWithFixedUpdate: Set<PragmaActor> = new Set();
-  public readonly actorsWithPreUpdate: Set<PragmaActor> = new Set();
-  public readonly actorsWithUpdate: Set<PragmaActor> = new Set();
-  public readonly actorsWithPostUpdate: Set<PragmaActor> = new Set();
-  public readonly actorsWithRender: Set<PragmaActor> = new Set();
+
+  public readonly actorsWithPhase: Record<
+    IteratedPragmaPhases,
+    Set<PragmaActor>
+  > = Object.fromEntries(
+    ITERATED_PHASES.map((phase) => [phase, new Set<PragmaActor>()]),
+  ) as Record<IteratedPragmaPhases, Set<PragmaActor>>;
   public readonly actorsToAdd: Set<PragmaActor> = new Set();
   public readonly actorsToRemove: Set<PragmaActor> = new Set();
   public readonly events = new EventBus();
+  public readonly sharedData = new SharedData();
   constructor(props: SceneProps) {
     this.sceneName = props.sceneName;
     this.active = props.active ?? true;
@@ -25,19 +29,37 @@ export default class PragmaScene {
   public get getAllActors() {
     return this.actorsInScene.values();
   }
+  public get getActorsCount() {
+    return this.actorsInScene.size;
+  }
   public get getName() {
     return this.sceneName;
   }
 
-  public update() {
-    for (const actor of this.actorsToAdd) {
-      this.actorsInScene.set(actor.ID, actor);
-      actor.onAwake();
+  private runPhase(phase: IteratedPragmaPhases) {
+    for (const actor of this.actorsWithPhase[phase]) {
+      if (phase !== "render" && !actor.getEnabled()) continue;
+      if (phase === "render" && !actor.getVisibility()) continue;
+      for (const component of actor.phaseRegistrator[phase]) {
+        if (!component.getEnabled()) continue;
+        component[phase]!();
+      }
     }
-    for (const actor of this.actorsToAdd) {
-      actor.onStart();
+  }
+
+  public prePhase() {
+    while (this.actorsToAdd.size > 0) {
+      const batch = new Set(this.actorsToAdd);
+      this.actorsToAdd.clear();
+
+      for (const actor of batch) {
+        this.actorsInScene.set(actor.ID, actor);
+        actor.onAwake();
+      }
+      for (const actor of batch) {
+        actor.onStart();
+      }
     }
-    this.actorsToAdd.clear();
     for (const actor of this.actorsToRemove) {
       actor.onDestroy();
       this.actorsInScene.delete(actor.ID);
@@ -47,44 +69,16 @@ export default class PragmaScene {
     for (const actor of this.actorsDirty) actor.startPending();
     this.actorsDirty.clear();
 
-    for (const actor of this.actorsWithPreUpdate) {
-      if (!actor.getEnabled()) continue;
-      for (const component of actor.phaseRegistrator.preUpdate) {
-        if (!component.getEnabled()) continue;
-        component.preUpdate!();
-      }
-    }
-    for (const actor of this.actorsWithFixedUpdate) {
-      if (!actor.getEnabled()) continue;
-      for (const component of actor.phaseRegistrator.fixedUpdate) {
-        if (!component.getEnabled()) continue;
-        component.fixedUpdate!();
-      }
-    }
-
-    for (const actor of this.actorsWithUpdate) {
-      if (!actor.getEnabled()) continue;
-      for (const component of actor.phaseRegistrator.update) {
-        if (!component.getEnabled()) continue;
-        component.update!();
-      }
-    }
-
-    for (const actor of this.actorsWithPostUpdate) {
-      if (!actor.getEnabled()) continue;
-      for (const component of actor.phaseRegistrator.postUpdate) {
-        if (!component.getEnabled()) continue;
-        component.postUpdate!();
-      }
-    }
-
-    for (const actor of this.actorsWithRender) {
-      if (!actor.getEnabled() || !actor.getVisibility()) continue;
-      for (const component of actor.phaseRegistrator.render) {
-        if (!component.getEnabled()) continue;
-        component.render!();
-      }
-    }
+    this.runPhase("preUpdate");
+  }
+  public fixedPhase() {
+    this.runPhase("preFixedUpdate");
+    this.runPhase("fixedUpdate");
+  }
+  public postPhase() {
+    this.runPhase("update");
+    this.runPhase("postUpdate");
+    this.runPhase("render");
   }
   public spawnActor(actor: PragmaActor) {
     actor.scene = this;
