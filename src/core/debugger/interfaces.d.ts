@@ -5,6 +5,10 @@ export interface IPerformanceModule {
   getFps(): number;
   getCpuTime(): number;
 }
+export interface IAuroraModule {
+  reportGPUData(data: AuroraSnapshot): void;
+}
 export interface IDebug {
   performance: IPerformanceModule;
+  aurora: IAuroraModule;
 }

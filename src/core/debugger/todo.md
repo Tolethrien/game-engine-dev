@@ -21,6 +21,9 @@
 - staty (draw calls, tris, verts, batches)
 - błędy WebGPU: uncapturederror na device, device.lost, getCompilationInfo() dla shaderów (błędy/warningi kompilacji WGSL z linią)
 
+## dogma/pragma debug
+- osobna kategoria pod debugowanie i pozyskiwanie informacji bezpośrednio z systemów dogma i pragma
+
 ## gameInspector
 
 - live podgląd scen/aktorów, ile ich jest, w jakiej fazie, enabled/visible itp

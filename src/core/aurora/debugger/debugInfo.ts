@@ -2,7 +2,7 @@ import Aurora from "../core";
 import { AuroraConfig } from "../renderer/config";
 import Renderer from "../renderer/renderer";
 import appendDebugMenu from "./debugMenu";
-
+import { debug } from "@debug";
 export const TEXTURES_TO_SHOW = [
   "canvas",
   "offscreenCanvas",
@@ -155,19 +155,18 @@ export default class AuroraDebugInfo {
   }
   public static setParam<T extends keyof DebugData>(
     data: T,
-    value: DebugData[T]
+    value: DebugData[T],
   ) {
     if (!this.isGathering) return;
     this.data[data] = value;
   }
   public static accumulate<T extends keyof DebugData>(
     data: T,
-    value: DebugData[T]
+    value: DebugData[T],
   ) {
     if (!this.isGathering) return;
 
     const last = this.data[data];
-
     if (typeof last === "string")
       console.warn(`you cannot accumulate string value for ${data}`);
     else if (typeof last === "number" && typeof value === "number")
@@ -205,7 +204,7 @@ export default class AuroraDebugInfo {
     console.group("Debug Data");
     console.log(
       "adapter:",
-      `${Aurora.device.adapterInfo.vendor}:${Aurora.device.adapterInfo.architecture}`
+      `${Aurora.device.adapterInfo.vendor}:${Aurora.device.adapterInfo.architecture}`,
     );
     console.log("FPS:", this.data.fps);
     if (this.isGathering) {
@@ -235,7 +234,7 @@ export default class AuroraDebugInfo {
   }
   public static setTimestamp(
     begin?: keyof typeof TIMESTAMPS,
-    end?: keyof typeof TIMESTAMPS
+    end?: keyof typeof TIMESTAMPS,
   ): GPURenderPassTimestampWrites | undefined {
     if (!this.isWorking) return;
     const beginBufferIndex = begin ? TIMESTAMPS[begin] : undefined;
@@ -285,10 +284,11 @@ export default class AuroraDebugInfo {
     if (!this.isGathering) return;
     const time = performance.now() - this.frameTimeStart;
     this.data["CPUTime"] = Number(time.toFixed(1));
+    debug.aurora.reportGPUData(this.data);
   }
   private static shouldTrigger(
     what: keyof typeof this.timeAccumulator,
-    seconds: number
+    seconds: number,
   ): boolean {
     if (this.timeAccumulator[what] >= seconds) {
       this.timeAccumulator[what] -= seconds;
@@ -300,7 +300,7 @@ export default class AuroraDebugInfo {
     const menu = document.getElementById("debugMenu");
     if (!menu) {
       console.warn(
-        "trying to set visibility of a debug menu, but menu is not append to body.\nMake sure you turn on debugger in auroraConfig"
+        "trying to set visibility of a debug menu, but menu is not append to body.\nMake sure you turn on debugger in auroraConfig",
       );
       return;
     }

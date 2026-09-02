@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
 
 const WINDOW = {
   onWindowResize: (callback: (size: Size2D) => void) =>
@@ -10,16 +10,22 @@ const WINDOW = {
       callback(bool),
     ),
   setFullScreen: (bool: boolean) => ipcRenderer.send("set-full-screen", bool),
+  getRefreshRate: async () =>
+    (await ipcRenderer.invoke("get-refresh-rate")) as number,
 };
 const DEBUG = {
+  //perf
   sendPerformanceSnapshot: (data: PerformanceSnapshot) =>
     ipcRenderer.send("debug:performance", data),
   onPerformanceSnapshot: (callback: (data: PerformanceSnapshot) => void) =>
-    ipcRenderer.on("debug:performance", (_, data: PerformanceSnapshot) =>
-      callback(data),
-    ),
-  onGameReloaded: (callback: () => void) =>
-    ipcRenderer.on("debug:gameReloaded", () => callback()),
+    on("debug:performance", callback),
+  //aurora
+  sendAuroraSnapshot: (data: AuroraSnapshot) =>
+    ipcRenderer.send("debug:aurora", data),
+  onAuroraSnapshot: (callback: (data: AuroraSnapshot) => void) =>
+    on("debug:aurora", callback),
+  //reload
+  onGameReloaded: (callback: () => void) => on("debug:gameReloaded", callback),
 };
 
 export const API = {
@@ -33,3 +39,12 @@ if (process.contextIsolated) {
     console.error(error);
   }
 }
+
+//helpers
+
+//send off to profiler to clear
+const on = <T>(channel: string, callback: (data: T) => void) => {
+  const handler = (_: IpcRendererEvent, data: T) => callback(data);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.off(channel, handler);
+};

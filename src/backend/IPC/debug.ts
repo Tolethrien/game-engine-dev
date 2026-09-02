@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { profilerWindow } from "../windows/profiler";
 
-const DEBUG_CHANNELS = ["debug:performance"] as const;
+const DEBUG_CHANNELS = ["debug:performance", "debug:aurora"] as const;
 
 export function registerDebugIPC() {
   DEBUG_CHANNELS.forEach((channel) => {

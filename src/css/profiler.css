@@ -1,0 +1,174 @@
+@import "tailwindcss";
+.sedqwedd {
+  background-color: #193dce; /* only to get color from picker xD */
+}
+
+/* ---------------------------------------------------------------
+   @theme holds the fallback values, used when <html> carries no
+   data-theme. Each variant below overrides the same names.
+   --------------------------------------------------------------- */
+@theme {
+  /* ---------- surfaces ---------- */
+  --color-window: #11111b;
+  --color-panel-body: #181825;
+  --color-panel-head: #252539;
+  --color-panel-head-hover: #2c2c44;
+
+  /* ---------- outlines ---------- */
+  --color-outline: #54556b;
+  --color-outline-hover: #6b6d88;
+  --color-divider: #54556b66;
+  --color-table-outline: #54556b99;
+  --color-table-line: #54556b4d;
+
+  /* ---------- text ---------- */
+  --color-fg: #d6d8e0;
+  --color-fg-dim: #7f849c;
+
+  /* ---------- status ---------- */
+  --color-live: #4ade80;
+  --color-stale: #fb593c;
+
+  /* ---------- type scale ---------- */
+  --text-body: 12px;
+  --text-note: 11px;
+  --text-caption: 10px;
+  --text-micro: 9px;
+  --text-glyph: 13px;
+
+  /* ---------- radii ---------- */
+  --radius-panel: 5px;
+  --radius-control: 4px;
+
+  /* ---------- structure ---------- */
+  --spacing-panel-head: 30px;
+  --spacing-row: 22px;
+  --spacing-pin: 16px;
+  --spacing-gutter: 10px;
+  /*------------console---------------*/
+  --color-warn: #f5c85c;
+  --color-error: #f0616b;
+
+  /*------------scroll---------------*/
+  --color-scrollbar: #3e4059;
+  --color-scrollbar-hover: #54556b;
+  --spacing-scrollbar: 8px;
+
+  --font-mono: "Consolas", "Menlo", monospace;
+}
+
+/* Variants are unlayered on purpose: unlayered rules outrank every
+   cascade layer, so they always win over what @theme emits.
+   Mocha has no block of its own - it IS the @theme above, and
+   useTheme drops the attribute for it, so its values live in one place. */
+
+:root[data-theme="ember"] {
+  --color-window: #14110f;
+  --color-panel-body: #1c1815;
+  --color-panel-head: #292320;
+  --color-panel-head-hover: #332b27;
+
+  --color-outline: #4a3f38;
+  --color-outline-hover: #6b5b50;
+  --color-divider: #4a3f3866;
+  --color-table-outline: #4a3f3899;
+  --color-table-line: #4a3f384d;
+
+  --color-fg: #ede4dc;
+  --color-fg-dim: #9c8b7f;
+
+  /* deliberately cool: warm status colours would blend into warm chrome */
+  --color-live: #7fd1a0;
+  --color-stale: #ff6b5b;
+
+  --radius-panel: 3px;
+
+  --radius-control: 2px;
+}
+:root[data-theme="paper"] {
+  --color-window: #e6ddcc;
+  --color-panel-body: #f5efe2;
+  --color-panel-head: #ebe2d1;
+  --color-panel-head-hover: #e2d7c3;
+
+  --color-outline: #c2b39a;
+  --color-outline-hover: #9c8a6e;
+  --color-divider: #c2b39a66;
+  --color-table-outline: #c2b39a99;
+  --color-table-line: #c2b39a4d;
+
+  --color-fg: #3a3125;
+  --color-fg-dim: #6e6249;
+
+  --color-live: #2e7d5b;
+  --color-stale: #c1502e;
+
+  --radius-panel: 6px;
+  --radius-control: 4px;
+}
+:root[data-theme="steel"] {
+  --color-window: #3b3f45;
+  --color-panel-body: #464b52;
+  --color-panel-head: #545a63;
+  --color-panel-head-hover: #5f666f;
+
+  --color-outline: #6e757f;
+  --color-outline-hover: #8b939e;
+  --color-divider: #6e757f66;
+  --color-table-outline: #6e757f99;
+  --color-table-line: #6e757f4d;
+
+  --color-fg: #eef1f5;
+  --color-fg-dim: #b8bfc9;
+
+  --color-live: #4fd18a;
+  --color-stale: #ffa14f;
+
+  --radius-panel: 4px;
+  --radius-control: 3px;
+}
+
+:root[data-theme="prism"] {
+  --color-window: #101a24;
+  --color-panel-body: #16302e;
+  --color-panel-head: #3d2039;
+  --color-panel-head-hover: #4a2745;
+
+  --color-outline: #6e4f74;
+  --color-outline-hover: #916c96;
+  --color-divider: #6e4f7466;
+  --color-table-outline: #6e4f7499;
+  --color-table-line: #6e4f744d;
+
+  --color-fg: #f2ece2;
+  --color-fg-dim: #b8a99e;
+
+  --color-live: #5ef0a8;
+  --color-stale: #ffc94d;
+}
+
+@keyframes panel-pulse {
+  50% {
+    opacity: 0.2;
+  }
+}
+.scroll-area::-webkit-scrollbar {
+  width: var(--spacing-scrollbar);
+  height: var(--spacing-scrollbar);
+}
+
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-hover);
+  background-clip: content-box;
+}

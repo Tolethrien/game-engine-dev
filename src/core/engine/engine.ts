@@ -3,9 +3,13 @@ import { assert } from "@utils/utils";
 import Time from "@engine/time";
 import Pragma from "../pragma/pragma";
 import { debug } from "@debug";
+import Aurora from "../aurora/core";
+import Renderer from "../aurora/renderer/renderer";
+import AuroraDebugInfo from "../aurora/debugger/debugInfo";
+import Draw from "../aurora/draw";
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
-  declare private static context: CanvasRenderingContext2D;
+  declare private static context: GPUCanvasContext;
   public static async initialize({
     preload,
     setup,
@@ -14,6 +18,7 @@ export default class Engine {
     setup: () => void;
   }) {
     await this.setCanvas();
+    await Aurora.init(this.canvas);
     Time.initTimer(performance.now());
     await preload();
     setup();
@@ -23,11 +28,29 @@ export default class Engine {
     return this.context;
   }
   private static loop(currentTime: number) {
+    Renderer.beginBatch();
+    Renderer.setGlobalIllumination([10, 0, 0]);
+    AuroraDebugInfo.startCount(currentTime);
     debug.performance.startFrame();
     Time.update(currentTime);
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     Pragma.update();
+    Draw.rect({
+      position: { x: 100, y: 100, z: 1 },
+      size: { height: 100, width: 100 },
+      tint: [255, 0, 255, 255],
+      emissive: 3.7,
+    });
+    Draw.pointLight({
+      position: { x: 300, y: 300, z: 1 },
+      size: { height: 500, width: 500 },
+      tint: [255, 0, 255],
+      intensity: 100,
+    });
     debug.performance.endFrame(Time.getFrameTime());
+    Renderer.endBatch();
+    AuroraDebugInfo.endCount();
+    debug.aurora.reportGPUData(AuroraDebugInfo.getAllData);
+
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }
 
@@ -40,7 +63,7 @@ export default class Engine {
     ) as HTMLCanvasElement | null;
     assert(canvas !== null, "There is no canvas element with ID: gameWindow");
     this.canvas = canvas;
-    this.context = canvas.getContext("2d")!;
+    this.context = canvas.getContext("webgpu")!;
     const size = await window.API.WINDOW.getWindowSize();
     canvas.width = size.width;
     canvas.height = size.height;

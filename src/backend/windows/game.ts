@@ -39,7 +39,7 @@ function onDevServer() {
     activate: false,
     title: "Misa Devtools",
   });
-  gameWindow.webContents.on("did-finish-load", () => {
+  gameWindow.webContents.on("did-start-loading", () => {
     profilerWindow?.webContents.send("debug:gameReloaded");
   });
 }

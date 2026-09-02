@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { ipcMain, screen } from "electron";
 import { gameWindow } from "../windows/game";
 const MIN_W = 960;
 const ASPECT = 16 / 9;
@@ -6,6 +6,7 @@ const ASPECT = 16 / 9;
 export type WindowMode = "fullScreen" | "border" | "borderless";
 export function registerWindowEventsIPC() {
   getWindowSize();
+  getRefreshRate();
   resizeEvents();
   focusEvents();
 }
@@ -48,5 +49,11 @@ function getWindowSize() {
   ipcMain.handle("get-window-size", () => {
     const [width, height] = gameWindow.getContentSize();
     return { width, height } as Size2D;
+  });
+}
+function getRefreshRate() {
+  ipcMain.handle("get-refresh-rate", () => {
+    const display = screen.getDisplayMatching(gameWindow.getBounds());
+    return Math.round(display.displayFrequency) || 60;
   });
 }
