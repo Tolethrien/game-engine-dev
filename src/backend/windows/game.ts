@@ -2,7 +2,7 @@ import { BrowserWindow, globalShortcut } from "electron";
 import path from "path";
 import { registerWindowEventsIPC } from "../IPC/gameWindow";
 import { loadRenderer } from "./loader";
-import { profilerWindow } from "./profiler";
+import { sendToProfiler } from "./profiler";
 
 export let gameWindow: BrowserWindow;
 
@@ -39,7 +39,7 @@ function onDevServer() {
     activate: false,
     title: "Misa Devtools",
   });
-  gameWindow.webContents.on("did-start-loading", () => {
-    profilerWindow?.webContents.send("debug:gameReloaded");
-  });
+  gameWindow.webContents.on("did-start-loading", () =>
+    sendToProfiler("debug:gameReloaded"),
+  );
 }

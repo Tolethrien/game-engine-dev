@@ -26,6 +26,9 @@ const DEBUG = {
     on("debug:aurora", callback),
   //reload
   onGameReloaded: (callback: () => void) => on("debug:gameReloaded", callback),
+  onProfilerState: (callback: (isOpen: boolean) => void) =>
+    on("debug:profilerState", callback),
+  openProfiler: () => ipcRenderer.send("openProfiler"),
 };
 
 export const API = {

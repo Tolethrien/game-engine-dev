@@ -2,8 +2,10 @@ import { BrowserWindow, globalShortcut } from "electron";
 import path from "path";
 import { loadRenderer } from "./loader";
 import { registerDebugIPC } from "../IPC/debug";
-export let profilerWindow: BrowserWindow;
-export function createConsoleWindow() {
+import { gameWindow } from "./game";
+export let profilerWindow: BrowserWindow | undefined;
+
+export function createProfilerWindow() {
   profilerWindow = new BrowserWindow({
     width: 1280,
     height: 720,
@@ -21,18 +23,37 @@ export function createConsoleWindow() {
     htmlFile: "index_profiler.html",
   });
   if (PROFILER_WINDOW_VITE_DEV_SERVER_URL) onDevServer();
-  registerDebugIPC();
+  sendToGame("debug:profilerState", true);
+  profilerWindow.on("closed", () => {
+    profilerWindow = undefined;
+    sendToGame("debug:profilerState", false);
+  });
 }
 function onDevServer() {
-  profilerWindow.webContents.on("before-input-event", (_event, input) => {
+  profilerWindow?.webContents.on("before-input-event", (_event, input) => {
     if (input.control && input.key.toLowerCase() === "r")
-      profilerWindow.reload();
+      profilerWindow?.reload();
     if (input.control && input.shift && input.key.toLowerCase() === "i")
-      profilerWindow.webContents.toggleDevTools();
+      profilerWindow?.webContents.toggleDevTools();
   });
-  profilerWindow.webContents.openDevTools({
+  profilerWindow?.webContents.openDevTools({
     mode: "right",
     activate: false,
     title: "Misa Profiler Devtools",
   });
+}
+export function sendToProfiler(channel: string, data?: unknown) {
+  if (!profilerWindow || profilerWindow.isDestroyed()) return;
+  profilerWindow.webContents.send(channel, data);
+}
+export function sendToGame(channel: string, data?: unknown) {
+  if (!gameWindow || gameWindow.isDestroyed()) return;
+  gameWindow.webContents.send(channel, data);
+}
+export function openProfilerWindow() {
+  if (profilerWindow && !profilerWindow.isDestroyed()) {
+    profilerWindow.focus();
+    return;
+  }
+  createProfilerWindow();
 }

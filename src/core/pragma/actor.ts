@@ -1,9 +1,9 @@
 import { assert } from "@/utils/utils";
 import PragmaComponent from "./component";
-import Transform from "@/sandbox/components/transform";
 import PragmaScene from "./scene";
-import Pragma, { EnginePhase, ITERATED_PHASES } from "./pragma";
+import { EnginePhase, ITERATED_PHASES } from "./pragma";
 import { EventBus } from "./eventManager";
+import Transform from "./transform";
 
 export default abstract class PragmaActor {
   public readonly ID: Symbol;

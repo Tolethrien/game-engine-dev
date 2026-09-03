@@ -2,6 +2,7 @@ import { API } from "../preload/preload";
 declare global {
   interface Window {
     API: typeof API;
+    openProfiler?: () => void;
   }
   interface PerformanceSnapshot {
     fps: number;

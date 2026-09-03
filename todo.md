@@ -1,3 +1,5 @@
 - wpierw przygotuj wszystko z oknem jak resize itp
 - scheculer wraz z ECS
 - dodac caly moduł testowania end-toend oparty na podobnej technice co debugger
+- now aurora
+- kolejne opcje do profilera
