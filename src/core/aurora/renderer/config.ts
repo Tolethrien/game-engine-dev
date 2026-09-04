@@ -7,7 +7,7 @@ import latoJson from "../assets/Lato-Regular-msdf.json";
 import { deepMerge } from "../../../utils/utils";
 export type RenderRes = "1920x1080" | "1280x720" | "854x480" | "640x360";
 type SortOrder = "none" | "y" | "y+x" | "y+x+z";
-type Profiler = "none" | "minimal" | "normal" | "extended";
+export type Profiler = "none" | "minimal" | "normal" | "extended";
 type UserTexture = { name: string; url: string };
 // type CameraProjection = "ortho" | "perspective" | "isometric";
 type ToneMaps = "rainhard" | "aces" | "filmic" | "none";

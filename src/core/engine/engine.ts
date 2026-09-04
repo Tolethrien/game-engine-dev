@@ -7,6 +7,7 @@ import Aurora from "../aurora/core";
 import Renderer from "../aurora/renderer/renderer";
 import AuroraDebugInfo from "../aurora/debugger/debugInfo";
 import Draw from "../aurora/draw";
+import FPSOverlay from "./fpsOverlay";
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
   declare private static context: GPUCanvasContext;
@@ -28,11 +29,10 @@ export default class Engine {
     return this.context;
   }
   private static loop(currentTime: number) {
+    Time.update(currentTime);
+    AuroraDebugInfo.startCount(currentTime);
     Renderer.beginBatch();
     Renderer.setGlobalIllumination([10, 0, 0]);
-    AuroraDebugInfo.startCount(currentTime);
-    debug.performance.startFrame();
-    Time.update(currentTime);
     Pragma.update();
     Draw.rect({
       position: { x: 100, y: 100, z: 1 },
@@ -46,10 +46,12 @@ export default class Engine {
       tint: [255, 0, 255],
       intensity: 100,
     });
-    debug.performance.endFrame(Time.getFrameTime());
     Renderer.endBatch();
     AuroraDebugInfo.endCount();
     debug.aurora.reportGPUData(AuroraDebugInfo.getAllData);
+    Time.endFrame();
+    FPSOverlay.update();
+    debug.performance.endFrame(Time.getFrameTime());
 
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }

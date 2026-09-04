@@ -1,3 +1,4 @@
+import Time from "@engine/time";
 import { IPerformanceModule } from "../interfaces";
 interface FrameSample {
   time: number;
@@ -7,19 +8,32 @@ interface FrameSample {
 export class DevPerformance implements IPerformanceModule {
   private static readonly HISTORY_WINDOW_MS = 30000;
   private history: FrameSample[] = [];
-  private frames = 0;
-  private elapsedMs = 0;
-  private fps = 0;
-  private frameStart = 0;
-  private cpuTimeMs = 0;
+  private snapshotElapsedMs = 0;
 
-  public getCpuTime() {
-    return this.cpuTimeMs;
-  }
-  public getFps() {
-    return this.fps;
+  public endFrame(frameTimeMs: number) {
+    const now = performance.now();
+    this.history.push({ time: now, frameTimeMs, cpuTimeMs: Time.getCpuTime() });
+    this.trimHistory(now);
+
+    this.snapshotElapsedMs += frameTimeMs;
+    if (this.snapshotElapsedMs < 1000) return;
+    this.snapshotElapsedMs -= 1000;
+    this.pushSnapshot();
   }
 
+  private pushSnapshot() {
+    window.API.DEBUG.sendPerformanceSnapshot({
+      fps: Time.getFps(),
+      cpuTimeMs: Time.getCpuTime(),
+      onePercentLow: this.get1PercentLow(),
+    });
+  }
+  private trimHistory(now: number) {
+    const cutoff = now - DevPerformance.HISTORY_WINDOW_MS;
+    let i = 0;
+    while (i < this.history.length && this.history[i].time < cutoff) i++;
+    if (i > 0) this.history.splice(0, i);
+  }
   public get1PercentLow(windowMs = DevPerformance.HISTORY_WINDOW_MS) {
     if (this.history.length === 0) return 0;
     const cutoff = this.history.at(-1)!.time - windowMs;
@@ -33,48 +47,8 @@ export class DevPerformance implements IPerformanceModule {
       samples.slice(0, count).reduce((sum, v) => sum + v, 0) / count;
     return 1000 / worstAvgMs;
   }
-  public startFrame() {
-    this.frameStart = performance.now();
-  }
-
-  public endFrame(frameTimeMs: number) {
-    const frameEnd = performance.now();
-    this.cpuTimeMs = frameEnd - this.frameStart;
-
-    this.frames++;
-    this.elapsedMs += frameTimeMs;
-    if (this.elapsedMs >= 1000) {
-      this.fps = this.frames;
-      this.frames = 0;
-      this.elapsedMs -= 1000;
-      this.pushSnapshot();
-    }
-
-    this.history.push({
-      time: frameEnd,
-      frameTimeMs,
-      cpuTimeMs: this.cpuTimeMs,
-    });
-    this.trimHistory(frameEnd);
-  }
-  private pushSnapshot() {
-    window.API.DEBUG.sendPerformanceSnapshot({
-      fps: this.fps,
-      cpuTimeMs: this.cpuTimeMs,
-      onePercentLow: this.get1PercentLow(),
-    });
-  }
-  private trimHistory(now: number) {
-    const cutoff = now - DevPerformance.HISTORY_WINDOW_MS;
-    let i = 0;
-    while (i < this.history.length && this.history[i].time < cutoff) i++;
-    if (i > 0) this.history.splice(0, i);
-  }
 }
 
 export const prodPerformance: IPerformanceModule = {
-  startFrame: () => {},
   endFrame: () => {},
-  getFps: () => 0,
-  getCpuTime: () => 0,
 };

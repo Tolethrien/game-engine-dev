@@ -1,6 +1,7 @@
 import Renderer from "@/core/aurora/renderer/renderer";
 import Engine from "@/core/engine/engine";
 import auroraConfig from "@/core/aurora/renderer/config";
+import FPSOverlay from "@/core/engine/fpsOverlay";
 async function preload() {
   const aurora = auroraConfig({
     userTextures: [],
@@ -9,7 +10,7 @@ async function preload() {
       bloom: true,
       lighting: true,
     },
-    debugger: "extended",
+    debugger: "minimal",
     camera: { builtInCameraInputs: false, speed: 0 },
     rendering: {
       sortOrder: "y+x+z",
@@ -20,7 +21,7 @@ async function preload() {
     },
   });
   await Renderer.initialize(aurora);
-  console.log(typeof Temporal);
+  FPSOverlay.setVisible(true);
 }
 function setup() {}
 Engine.initialize({ setup, preload });
