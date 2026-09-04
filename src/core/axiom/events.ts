@@ -73,6 +73,23 @@ export class Timer {
     this.callback();
   }
 }
+export class Collector<T> {
+  private sources: Set<() => T> = new Set();
+
+  collect(): T[] {
+    const results: T[] = [];
+    this.sources.forEach((source) => results.push(source()));
+    return results;
+  }
+
+  connect(source: () => T) {
+    this.sources.add(source);
+  }
+
+  disconnect(source: () => T) {
+    this.sources.delete(source);
+  }
+}
 export class SharedData {
   private storage: Map<string, any> = new Map();
   public add<T>(name: string, data: T) {

@@ -1,4 +1,4 @@
-import { assert } from "@/utils/utils";
+import { assert } from "@axiom/utils";
 import Time from "@engine/time";
 import DogmaScene, { PartialDSFlags } from "./scene";
 export type SharedData = Record<string, unknown>;

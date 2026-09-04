@@ -1,4 +1,4 @@
-import { assert, loadImg } from "../../utils/utils";
+import { assert, loadImg } from "@axiom/utils";
 import type {
   AuroraComputePipeline,
   AuroraRenderPipeline,

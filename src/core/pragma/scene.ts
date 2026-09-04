@@ -1,5 +1,5 @@
+import { EventBus, SharedData } from "@axiom/events";
 import PragmaActor from "./actor";
-import { EventBus, SharedData } from "./eventManager";
 import { ITERATED_PHASES } from "./pragma";
 
 interface SceneProps {

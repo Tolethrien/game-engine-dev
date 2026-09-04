@@ -1,10 +1,10 @@
-import Aurora from "../aurora/core";
-import Draw from "../aurora/draw";
-import AABB from "../axiom/AABB";
-import AxiomMath from "../axiom/math";
-import InputManager from "../engine/inputManager";
-import { KEY_GROUP } from "../engine/keys";
-import Time from "../engine/time";
+import Aurora from "@aurora/core";
+import Draw from "@aurora/draw";
+import AABB from "@axiom/AABB";
+import AxiomMath from "@axiom/math";
+import InputManager from "@engine/inputManager";
+import { KEY_GROUP } from "@engine/keys";
+import Time from "@engine/time";
 import UINode from "./node";
 
 const DESIGN_W = 1920;

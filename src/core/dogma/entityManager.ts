@@ -1,4 +1,4 @@
-import DogmaEntity from "@dogma/entity";
+import DogmaEntity from "./entity";
 import Dogma from "./dogma";
 
 export default class EntityManager {

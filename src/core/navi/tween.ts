@@ -1,4 +1,4 @@
-import Easing from "../axiom/easing";
+import Easing from "@axiom/easing";
 
 export interface TweenSample {
   scaleX?: number;

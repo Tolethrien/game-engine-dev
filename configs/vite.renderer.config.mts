@@ -12,7 +12,11 @@ export default defineConfig(({ mode }) => {
         "@sandbox": path.resolve(import.meta.dirname, "../src/sandbox"),
         "@engine": path.resolve(import.meta.dirname, "../src/core/engine"),
         "@dogma": path.resolve(import.meta.dirname, "../src/core/dogma"),
-        "@utils": path.resolve(import.meta.dirname, "../src/utils"),
+        "@pragma": path.resolve(import.meta.dirname, "../src/core/pragma"),
+        "@aurora": path.resolve(import.meta.dirname, "../src/core/aurora"),
+        "@cello": path.resolve(import.meta.dirname, "../src/core/cello"),
+        "@navi": path.resolve(import.meta.dirname, "../src/core/navi"),
+        "@axiom": path.resolve(import.meta.dirname, "../src/core/axiom"),
         "@debug": path.resolve(
           import.meta.dirname,
           isProd

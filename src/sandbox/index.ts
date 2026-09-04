@@ -1,7 +1,7 @@
-import Renderer from "@/core/aurora/renderer/renderer";
-import Engine from "@/core/engine/engine";
-import auroraConfig from "@/core/aurora/renderer/config";
-import FPSOverlay from "@/core/engine/fpsOverlay";
+import Renderer from "@aurora/renderer/renderer";
+import Engine from "@engine/engine";
+import auroraConfig from "@aurora/renderer/config";
+import FPSOverlay from "@engine/fpsOverlay";
 async function preload() {
   const aurora = auroraConfig({
     userTextures: [],

@@ -1,8 +1,8 @@
-import Mat2 from "@/core/axiom/mat2";
-import Vec2 from "@/core/axiom/vec2";
-import Time from "@/core/engine/time";
-import PragmaComponent from "@/core/pragma/component";
-import Pragma from "@/core/pragma/pragma";
+import Mat2 from "@axiom/mat2";
+import Vec2 from "@axiom/vec2";
+import Time from "@engine/time";
+import PragmaComponent from "./component";
+import Pragma from "./pragma";
 
 export default class Transform extends PragmaComponent {
   private position: Vec2 = Vec2.Zero;

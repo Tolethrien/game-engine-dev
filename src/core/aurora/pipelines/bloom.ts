@@ -1,4 +1,4 @@
-import { assert } from "../../../utils/utils";
+import { assert } from "@axiom/utils";
 import Aurora from "../core";
 import AuroraDebugInfo from "../debugger/debugInfo";
 import Renderer from "../renderer/renderer";
@@ -129,7 +129,7 @@ export default class Bloom {
   private static createDownscaleBindFromLayout(index: number) {
     const mipLevel = Math.floor(index / 2);
     const pass = Math.floor(
-      (index / this.bloomOptions[BloomParamsEnum["numberOfPasses"]]) * 2
+      (index / this.bloomOptions[BloomParamsEnum["numberOfPasses"]]) * 2,
     );
     let input: GPUTextureView;
     let output: GPUTextureView;
@@ -157,14 +157,14 @@ export default class Bloom {
             },
           ],
         },
-        layout
+        layout,
       );
       this.bindList.set(`x-${mipLevel}`, bind);
       this.orderList.push("x");
       this.log(
         `PassX: input:${textureToUse}-mip:${
           inputMip - 1
-        } => output:bloomXPass-mip:${mipLevel}`
+        } => output:bloomXPass-mip:${mipLevel}`,
       );
     } else {
       const layout = this.getLayout("y");
@@ -184,13 +184,13 @@ export default class Bloom {
             },
           ],
         },
-        layout
+        layout,
       );
       this.bindList.set(`y-${mipLevel}`, bind);
       this.orderList.push("y");
 
       this.log(
-        `PassY: input:bloomXPass-mip:${mipLevel} => output:bloomYPass-mip:${mipLevel}`
+        `PassY: input:bloomXPass-mip:${mipLevel} => output:bloomYPass-mip:${mipLevel}`,
       );
     }
   }
@@ -201,15 +201,15 @@ export default class Bloom {
       passIndex === this.bloomOptions[BloomParamsEnum["numberOfPasses"]] - 1;
     let inputOne: GPUTextureView = Renderer.getTextureView(
       isFirstUpscale ? "bloomYPass" : "bloomXPass",
-      passIndex
+      passIndex,
     );
     let inputTwo: GPUTextureView = Renderer.getTextureView(
       "bloomYPass",
-      passIndex - 1
+      passIndex - 1,
     );
     let output: GPUTextureView = Renderer.getTextureView(
       "bloomXPass",
-      passIndex - 1
+      passIndex - 1,
     );
     const bind = Aurora.getNewBindGroupFromLayout(
       {
@@ -233,7 +233,7 @@ export default class Bloom {
           },
         ],
       },
-      layout
+      layout,
     );
     this.bindList.set(`upscale-${passIndex}`, bind);
     this.orderList.push("upscale");
@@ -242,7 +242,7 @@ export default class Bloom {
         isFirstUpscale ? "Y" : "X"
       }Pass-mip${passIndex},bloomYPass-mip${
         passIndex - 1
-      } ) => output:bloomXPass-mip:${passIndex - 1}`
+      } ) => output:bloomXPass-mip:${passIndex - 1}`,
     );
   }
   private static createPresentationBind() {
@@ -486,7 +486,7 @@ export default class Bloom {
     const pipeline = this.pipelines.get(name);
     assert(
       pipeline !== undefined,
-      `bloom pipeline with name ${name} not found`
+      `bloom pipeline with name ${name} not found`,
     );
     return pipeline;
   }

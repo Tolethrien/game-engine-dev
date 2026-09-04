@@ -1,6 +1,6 @@
-import Time from "../engine/time";
+import Time from "@engine/time";
+import { EventBus } from "@axiom/events";
 import PragmaActor from "./actor";
-import { EventBus } from "./eventManager";
 import PragmaScene from "./scene";
 
 export enum EnginePhase {

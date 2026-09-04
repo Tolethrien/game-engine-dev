@@ -1,10 +1,10 @@
 import { dogmaConfig } from "@sandbox/configs";
 import DogmaComponent from "./component";
 import DogmaSystem, { InternalDSProps } from "./system";
-import { assert } from "@/utils/utils";
+import { assert } from "@axiom/utils";
 import DogmaEntity from "./entity";
 import { SharedData } from "./dogma";
-import EventManager, { EventData } from "./eventManager";
+import EventManager from "./eventManager";
 export interface DogmaSceneFlags {
   isActive: boolean;
   isRendered: boolean;

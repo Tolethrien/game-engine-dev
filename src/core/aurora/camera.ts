@@ -1,8 +1,7 @@
 import Aurora from "./core";
 import Aurora2DRenderer from "./renderer/renderer";
 import { AuroraConfig } from "./renderer/config";
-import Time from "../engine/time";
-import Mat4 from "../axiom/mat4";
+import Mat4 from "@axiom/mat4";
 type CameraZoom = { current: number; max: number; min: number };
 type CameraPosition = { x: number; y: number };
 const cameraData = {

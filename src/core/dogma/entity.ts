@@ -1,6 +1,6 @@
 import { dogmaConfig } from "@sandbox/configs";
-import DogmaComponent, { InternalDCProps } from "@dogma/component";
-import { assert, createUUID } from "@/utils/utils";
+import DogmaComponent, { InternalDCProps } from "./component";
+import { assert, randomUUID } from "@axiom/utils";
 
 export default abstract class DogmaEntity {
   declare public readonly ID: Symbol;
@@ -8,7 +8,7 @@ export default abstract class DogmaEntity {
   private marker: [string];
   private components = new Map<string, DogmaComponent>();
   public constructor() {
-    this.ID = Symbol(createUUID());
+    this.ID = Symbol(randomUUID());
     this.marker = [""];
   }
   public addComponent<T extends keyof DogmaComponentRegistry>(

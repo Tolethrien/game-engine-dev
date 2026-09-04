@@ -1,4 +1,4 @@
-import { deepMerge } from "@/utils/utils";
+import { deepMerge } from "@axiom/utils";
 export type Direction = "row" | "col";
 export type AlignMain = "start" | "center" | "end" | "between";
 export type AlignCross = "start" | "center" | "end" | "stretch";

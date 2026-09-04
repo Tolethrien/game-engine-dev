@@ -1,9 +1,9 @@
-import { assert } from "@/utils/utils";
+import { assert } from "@axiom/utils";
 import PragmaComponent from "./component";
 import PragmaScene from "./scene";
 import { EnginePhase, ITERATED_PHASES } from "./pragma";
-import { EventBus } from "./eventManager";
 import Transform from "./transform";
+import { EventBus } from "@axiom/events";
 
 export default abstract class PragmaActor {
   public readonly ID: Symbol;

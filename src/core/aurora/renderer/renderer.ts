@@ -7,7 +7,7 @@ import {
   generateInternalTextures,
 } from "./generators";
 import { AuroraConfig, ChangeableRenderConfig, RenderRes } from "./config";
-import { assert } from "../../../utils/utils";
+import { assert } from "@axiom/utils";
 import Aurora from "../core";
 import FontGen from "./fontGen";
 import SequentialDrawPipeline from "../pipelines/sequentialDraw";
@@ -23,7 +23,7 @@ import GuiPipeline from "../pipelines/gui";
 import ScreenPipeline from "../pipelines/screenPipeline";
 import PostProcessLDR, { PostLDR } from "../pipelines/postProcessLDR";
 import dummyTexture from "../assets/dummy.png";
-import FPSOverlay from "@/core/engine/fpsOverlay";
+import FPSOverlay from "@engine/fpsOverlay";
 
 interface PipelineStaticClass {
   usePipeline(): void;

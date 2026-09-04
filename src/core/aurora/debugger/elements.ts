@@ -1,4 +1,4 @@
-import { assert } from "../../../utils/utils";
+import { assert } from "@axiom/utils";
 import "./auroraDebug.css";
 import icon from "../assets/auroraIco128.png";
 interface Slider {

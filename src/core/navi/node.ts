@@ -1,9 +1,9 @@
-import Draw from "@/core/aurora/draw";
+import Draw from "@aurora/draw";
 import { Anchor, createStyle, mergeStyle, Style } from "./style";
 import { px, toPx, Unit, UnitPosition2D, Units, UnitSize2D } from "./units";
 import Navi from "./navi";
-import { deepMerge } from "@/utils/utils";
-import AxiomMath from "../axiom/math";
+import { deepMerge } from "@axiom/utils";
+import AxiomMath from "@axiom/math";
 import { Tween } from "./tween";
 type Axis = "x" | "y";
 export type InputMode = "normal" | "none" | "absorb" | "disabled";

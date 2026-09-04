@@ -1,12 +1,12 @@
 import "@/css/index.css";
-import { assert } from "@utils/utils";
-import Time from "@engine/time";
-import Pragma from "../pragma/pragma";
+import { assert } from "@axiom/utils";
+import Time from "./time";
+import Pragma from "@pragma/pragma";
 import { debug } from "@debug";
-import Aurora from "../aurora/core";
-import Renderer from "../aurora/renderer/renderer";
-import AuroraDebugInfo from "../aurora/debugger/debugInfo";
-import Draw from "../aurora/draw";
+import Aurora from "@aurora/core";
+import Renderer from "@aurora/renderer/renderer";
+import AuroraDebugInfo from "@aurora/debugger/debugInfo";
+import Draw from "@aurora/draw";
 import FPSOverlay from "./fpsOverlay";
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;

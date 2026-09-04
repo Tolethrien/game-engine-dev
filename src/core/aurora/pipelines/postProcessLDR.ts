@@ -1,4 +1,4 @@
-import { assert, deepMerge, flatObjectToValues } from "../../../utils/utils";
+import { assert, deepMerge, flatObjectToValues } from "@axiom/utils";
 import { PipelineBind } from "../aurora";
 import Aurora from "../core";
 import AuroraDebugInfo from "../debugger/debugInfo";
@@ -74,7 +74,7 @@ export default class PostProcessLDR {
     const pipelineLayout = Aurora.createPipelineLayout([this.layout]);
 
     for (const [postName, shaderName] of Object.entries(
-      AVAILABLE_POSTS_SHADERS
+      AVAILABLE_POSTS_SHADERS,
     )) {
       const shader = Aurora.createShader(shaderName, shaderName);
       const pipeline = await Aurora.createRenderPipeline({
@@ -107,7 +107,7 @@ export default class PostProcessLDR {
       if (isLastPass) writeToTexture = "PostLDR";
       const timestamp = AuroraDebugInfo.setTimestamp(
         currentPass === 0 ? "postLDRStart" : undefined,
-        isLastPass ? "postLDREnd" : undefined
+        isLastPass ? "postLDREnd" : undefined,
       );
       const texture = Renderer.getTextureView(writeToTexture);
       const bind = this.generateBind(post, readFromTexture);
@@ -173,7 +173,7 @@ export default class PostProcessLDR {
     const pipeline = this.pipelines.get(name);
     assert(
       pipeline !== undefined,
-      `bloom pipeline with name ${name} not found`
+      `bloom pipeline with name ${name} not found`,
     );
     return pipeline;
   }
@@ -204,7 +204,7 @@ export default class PostProcessLDR {
           },
         ],
       },
-      this.layout
+      this.layout,
     );
     const dataPlacement = DATA_SIZES[postName];
     Aurora.device.queue.writeBuffer(
@@ -212,7 +212,7 @@ export default class PostProcessLDR {
       0,
       this.PPData,
       dataPlacement.offset,
-      dataPlacement.size
+      dataPlacement.size,
     );
 
     return bindData;

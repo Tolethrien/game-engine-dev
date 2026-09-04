@@ -4,7 +4,7 @@ import jerseyImg from "../assets/Jersey25-Regular.png";
 import jerseyJson from "../assets/Jersey25-Regular-msdf.json";
 import latoImg from "../assets/Lato-Regular.png";
 import latoJson from "../assets/Lato-Regular-msdf.json";
-import { deepMerge } from "../../../utils/utils";
+import { deepMerge } from "@axiom/utils";
 export type RenderRes = "1920x1080" | "1280x720" | "854x480" | "640x360";
 type SortOrder = "none" | "y" | "y+x" | "y+x+z";
 export type Profiler = "none" | "minimal" | "normal" | "extended";
