@@ -3,16 +3,17 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import solid from "vite-plugin-solid";
 // https://vitejs.dev/config
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   plugins: [solid(), tailwindcss()],
   build: {
+    target: "esnext",
     rollupOptions: {
-      input: path.resolve(__dirname, "../index_profiler.html"),
+      input: path.resolve(import.meta.dirname, "../index_profiler.html"),
     },
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "../src"),
+      "@": path.resolve(import.meta.dirname, "../src"),
     },
   },
   cacheDir: "node_modules/.vite/profiler_window",

@@ -1,7 +1,6 @@
-import { BrowserWindow, globalShortcut } from "electron";
+import { BrowserWindow } from "electron";
 import path from "path";
 import { loadRenderer } from "./loader";
-import { registerDebugIPC } from "../IPC/debug";
 import { gameWindow } from "./game";
 export let profilerWindow: BrowserWindow | undefined;
 

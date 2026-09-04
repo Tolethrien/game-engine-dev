@@ -1,4 +1,6 @@
-//export interface ILogger {} <- przykladowy moduł
+export interface ILogger {
+  log: (data: unknown) => void;
+}
 export interface IPerformanceModule {
   startFrame(): void;
   endFrame(frameTimeMs: number): void;
@@ -11,4 +13,5 @@ export interface IAuroraModule {
 export interface IDebug {
   performance: IPerformanceModule;
   aurora: IAuroraModule;
+  log: ILogger;
 }

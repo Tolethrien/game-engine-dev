@@ -20,6 +20,7 @@ async function preload() {
     },
   });
   await Renderer.initialize(aurora);
+  console.log(typeof Temporal);
 }
 function setup() {}
 Engine.initialize({ setup, preload });

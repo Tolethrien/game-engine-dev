@@ -1,4 +1,4 @@
-import { BrowserWindow, globalShortcut } from "electron";
+import { BrowserWindow } from "electron";
 import path from "path";
 import { registerWindowEventsIPC } from "../IPC/gameWindow";
 import { loadRenderer } from "./loader";
@@ -26,6 +26,11 @@ export function createGameWindow() {
     htmlFile: "index.html",
   });
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) onDevServer();
+  gameWindow.webContents.openDevTools({
+    mode: "detach",
+    activate: false,
+    title: "Misa Devtools",
+  });
 }
 function onDevServer() {
   gameWindow.maximize();

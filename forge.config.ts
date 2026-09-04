@@ -12,20 +12,20 @@ const config: ForgeConfig = {
       build: [
         {
           entry: "src/backend/main.ts",
-          config: "configs/vite.main.config.ts",
+          config: "configs/vite.main.config.mts",
         },
         {
           entry: "src/preload/preload.ts",
-          config: "configs/vite.preload.config.ts",
+          config: "configs/vite.preload.config.mts",
         },
       ],
       renderer: [
-        { name: "main_window", config: "configs/vite.renderer.config.ts" },
+        { name: "main_window", config: "configs/vite.renderer.config.mts" },
         ...(isDev
           ? [
               {
                 name: "profiler_window",
-                config: "configs/vite.profiler.config.ts",
+                config: "configs/vite.profiler.config.mts",
               },
             ]
           : []),

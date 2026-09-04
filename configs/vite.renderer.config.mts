@@ -5,22 +5,22 @@ import path from "path";
 export default defineConfig(({ mode }) => {
   const isProd = mode === "production";
   return {
+    build: { target: "esnext" },
     cacheDir: "node_modules/.vite/main_window",
-    assetsInclude: ["src/assets/*"],
     resolve: {
       alias: {
-        "@sandbox": path.resolve(__dirname, "../src/sandbox"),
-        "@engine": path.resolve(__dirname, "../src/core/engine"),
-        "@dogma": path.resolve(__dirname, "../src/core/dogma"),
-        "@utils": path.resolve(__dirname, "../src/utils"),
+        "@sandbox": path.resolve(import.meta.dirname, "../src/sandbox"),
+        "@engine": path.resolve(import.meta.dirname, "../src/core/engine"),
+        "@dogma": path.resolve(import.meta.dirname, "../src/core/dogma"),
+        "@utils": path.resolve(import.meta.dirname, "../src/utils"),
         "@debug": path.resolve(
-          __dirname,
+          import.meta.dirname,
           isProd
             ? "../src/core/debugger/debug.prod.ts"
             : "../src/core/debugger/debug.ts",
         ),
 
-        "@": path.resolve(__dirname, "../src"),
+        "@": path.resolve(import.meta.dirname, "../src"),
       },
     },
   };
