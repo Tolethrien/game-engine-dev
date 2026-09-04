@@ -4,13 +4,13 @@
   "version"        :"1.0.0",
   "description"    :"dev branch of a core element of engine",
   "main"           :".vite/build/main.js",
+  "private"        :true,
   "scripts"        :{
     "dev"    :"electron-forge start",
     "package":"electron-forge package",
+    "preview":"electron-forge package && node scripts/preview.mts",
     "make"   :"electron-forge make",
-    "publish":"electron-forge publish",
-    "tsCheck":"tsc --noEmit",
-    "preview":"electron-forge make && set ELECTRON_PREVIEW=true && electron ."
+    "tsCheck":"tsc --noEmit"
   },
   "keywords"       :[],
   "author"         :{"name":"Pavel","email":"tolethrien@gmail.com"},
