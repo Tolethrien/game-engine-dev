@@ -31,17 +31,17 @@ pnpm preview   # package + quick preview of the built app
 
 ## Architecture
 
-| Module              | Role                                                                                                     | Docs                                                                       |
-| ------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `src/core/aurora`   | WebGPU renderer (batching, lights, bloom, GPU debug)                                                     | —                                                                          |
-| `src/core/dogma`    | ECS core — scenes/entities/components/systems                                                            | [docs/dogma.md](docs/dogma.md), [docs/dogma-dev.md](docs/dogma-dev.md)     |
-| `src/core/pragma`   | Actor-based core — scenes/actors/components with logic                                                   | [docs/pragma.md](docs/pragma.md), [docs/pragma-dev.md](docs/pragma-dev.md) |
-| `src/core/navi`     | UI — node tree, layout, styles, animations, input                                                        | [docs/navi.md](docs/navi.md), [docs/navi-dev.md](docs/navi-dev.md)         |
-| `src/core/cello`    | Audio — Web Audio graph, category volume tree, effects, sound pooling                                    | —                                                                          |
-| `src/core/axiom`    | Math/utils library — vectors, matrices, AABB, collisions, spatial grid, quad tree, easing, seeded random | —                                                                          |
-| `src/core/engine`   | Glue: frame loop, input, time                                                                            | —                                                                          |
-| `src/core/debugger` | Logger and debug tooling (dev/prod)                                                                      | —                                                                          |
-| `src/sandbox`       | Where your own game code lives                                                                           | —                                                                          |
+| Module              | Role                                                                                                     | Docs                                  |
+| ------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `src/core/aurora`   | WebGPU renderer (batching, lights, bloom, GPU debug)                                                     | [docs/aurora.md](docs/aurora.md)       |
+| `src/core/dogma`    | ECS core — scenes/entities/components/systems                                                            | [docs/dogma.md](docs/dogma.md)         |
+| `src/core/pragma`   | Actor-based core — scenes/actors/components with logic                                                   | [docs/pragma.md](docs/pragma.md)       |
+| `src/core/navi`     | UI — node tree, layout, styles, animations, input                                                        | [docs/navi.md](docs/navi.md)           |
+| `src/core/cello`    | Audio — Web Audio graph, category volume tree, effects, sound pooling                                    | [docs/cello.md](docs/cello.md)         |
+| `src/core/axiom`    | Math/utils library — vectors, matrices, AABB, collisions, spatial grid, quad tree, easing, seeded random | [docs/axiom.md](docs/axiom.md)         |
+| `src/core/engine`   | Glue: frame loop, input, time                                                                            | [docs/engine.md](docs/engine.md)       |
+| `src/core/debugger` | Logger, performance/GPU telemetry, and the Electron profiler window (dev-only, stripped in prod)         | [docs/debugger.md](docs/debugger.md)   |
+| `src/sandbox`       | Where your own game code lives                                                                           | —                                      |
 
 ## Quick start
 

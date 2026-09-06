@@ -1,1 +1,0 @@
-- przejsc z "w" na klawisz code w input managerze bo inaczej wlaczony caps z miejsca blokuje np ruch

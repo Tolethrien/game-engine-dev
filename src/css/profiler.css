@@ -57,11 +57,6 @@
   --font-mono: "Consolas", "Menlo", monospace;
 }
 
-/* Variants are unlayered on purpose: unlayered rules outrank every
-   cascade layer, so they always win over what @theme emits.
-   Mocha has no block of its own - it IS the @theme above, and
-   useTheme drops the attribute for it, so its values live in one place. */
-
 :root[data-theme="ember"] {
   --color-window: #14110f;
   --color-panel-body: #1c1815;
@@ -77,7 +72,6 @@
   --color-fg: #ede4dc;
   --color-fg-dim: #9c8b7f;
 
-  /* deliberately cool: warm status colours would blend into warm chrome */
   --color-live: #7fd1a0;
   --color-stale: #ff6b5b;
 
