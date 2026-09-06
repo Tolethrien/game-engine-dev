@@ -2,6 +2,7 @@ import Renderer from "@aurora/renderer/renderer";
 import Engine from "@engine/engine";
 import auroraConfig from "@aurora/renderer/config";
 import FPSOverlay from "@engine/fpsOverlay";
+import { debug } from "@debug";
 async function preload() {
   const aurora = auroraConfig({
     userTextures: [],
@@ -21,7 +22,13 @@ async function preload() {
     },
   });
   await Renderer.initialize(aurora);
-  FPSOverlay.setVisible(true);
+  // FPSOverlay.setVisible(true);
 }
-function setup() {}
+function setup() {
+  debug.log.log("some data");
+  debug.log.success("some more data");
+  debug.log.error("some more data");
+  debug.log.warn("some more data");
+  debug.log.notify("some more data");
+}
 Engine.initialize({ setup, preload });
