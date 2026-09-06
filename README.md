@@ -41,6 +41,7 @@ pnpm preview   # package + quick preview of the built app
 | `src/core/axiom`    | Math/utils library — vectors, matrices, AABB, collisions, spatial grid, quad tree, easing, seeded random | [docs/axiom.md](docs/axiom.md)         |
 | `src/core/engine`   | Glue: frame loop, input, time                                                                            | [docs/engine.md](docs/engine.md)       |
 | `src/core/debugger` | Logger, performance/GPU telemetry, and the Electron profiler window (dev-only, stripped in prod)         | [docs/debugger.md](docs/debugger.md)   |
+| `src/backend`, `src/preload` | Electron main process + preload bridge (`window.API`) — how the game talks to the OS/filesystem | [docs/backend.md](docs/backend.md)     |
 | `src/sandbox`       | Where your own game code lives                                                                           | —                                      |
 
 ## Quick start
