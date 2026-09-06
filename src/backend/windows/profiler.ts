@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, screen } from "electron";
 import path from "path";
 import { loadRenderer } from "./loader";
 import { gameWindow } from "./game";
@@ -6,8 +6,7 @@ export let profilerWindow: BrowserWindow | undefined;
 
 export function createProfilerWindow() {
   profilerWindow = new BrowserWindow({
-    width: 1280,
-    height: 720,
+    ...getDockBounds(),
     useContentSize: true,
     resizable: true,
     webPreferences: {
@@ -35,11 +34,11 @@ function onDevServer() {
     if (input.control && input.shift && input.key.toLowerCase() === "i")
       profilerWindow?.webContents.toggleDevTools();
   });
-  profilerWindow?.webContents.openDevTools({
-    mode: "right",
-    activate: false,
-    title: "Misa Profiler Devtools",
-  });
+  // profilerWindow?.webContents.openDevTools({
+  //   mode: "right",
+  //   activate: false,
+  //   title: "Misa Profiler Devtools",
+  // });
 }
 export function sendToProfiler(channel: string, data?: unknown) {
   if (!profilerWindow || profilerWindow.isDestroyed()) return;
@@ -55,4 +54,16 @@ export function openProfilerWindow() {
     return;
   }
   createProfilerWindow();
+}
+
+function getDockBounds() {
+  const DOCK_WIDTH_RATIO = 0.3;
+  const { workArea } = screen.getPrimaryDisplay();
+  const width = Math.round(workArea.width * DOCK_WIDTH_RATIO);
+  return {
+    x: workArea.x + workArea.width - width,
+    y: workArea.y,
+    width,
+    height: workArea.height,
+  };
 }

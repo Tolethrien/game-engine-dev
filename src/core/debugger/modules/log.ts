@@ -61,4 +61,8 @@ export class DevLogger implements ILogger {
 // // WERSJA PROD - Płaski obiekt
 export const prodLogger: ILogger = {
   log: () => {},
+  success: () => {},
+  error: () => {},
+  warn: () => {},
+  notify: () => {},
 };

@@ -11,7 +11,6 @@ export class AuroraDevModule implements IAuroraModule {
     const now = performance.now();
     if (now - this.lastReport < REPORT_INTERVAL_MS) return;
     this.lastReport = now;
-    console.log("sram");
     window.API.DEBUG.sendAuroraSnapshot(data);
   }
 }

@@ -1,5 +1,9 @@
 export interface ILogger {
   log: (data: unknown) => void;
+  success: (data: unknown) => void;
+  error: (data: unknown) => void;
+  warn: (data: unknown) => void;
+  notify: (data: unknown) => void;
 }
 export interface IPerformanceModule {
   endFrame(frameTimeMs: number): void;

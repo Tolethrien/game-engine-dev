@@ -26,9 +26,5 @@ async function preload() {
 }
 function setup() {
   debug.log.log("some data");
-  debug.log.success("some more data");
-  debug.log.error("some more data");
-  debug.log.warn("some more data");
-  debug.log.notify("some more data");
 }
 Engine.initialize({ setup, preload });

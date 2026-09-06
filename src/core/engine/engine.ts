@@ -1,13 +1,14 @@
 import "@/css/index.css";
 import { assert } from "@axiom/utils";
 import Time from "./time";
-import Pragma from "@pragma/pragma";
 import { debug } from "@debug";
 import Aurora from "@aurora/core";
 import Renderer from "@aurora/renderer/renderer";
 import AuroraDebugInfo from "@aurora/debugger/debugInfo";
 import Draw from "@aurora/draw";
 import FPSOverlay from "./fpsOverlay";
+import InputManager from "./inputManager";
+import Navi from "../navi/navi";
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
   declare private static context: GPUCanvasContext;
@@ -19,7 +20,9 @@ export default class Engine {
     setup: () => void;
   }) {
     await this.setCanvas();
+    InputManager.registerEvents();
     await Aurora.init(this.canvas);
+    Navi.initialize();
     Time.initTimer(performance.now());
     await preload();
     setup();
@@ -31,9 +34,13 @@ export default class Engine {
   private static loop(currentTime: number) {
     Time.update(currentTime);
     AuroraDebugInfo.startCount(currentTime);
+    InputManager.updateInputs();
+    Navi.updateSystem();
+
     Renderer.beginBatch();
+
+    // temporary for develop ========================
     Renderer.setGlobalIllumination([10, 0, 0]);
-    Pragma.update();
     Draw.rect({
       position: { x: 100, y: 100, z: 1 },
       size: { height: 100, width: 100 },
@@ -46,6 +53,12 @@ export default class Engine {
       tint: [255, 0, 255],
       intensity: 100,
     });
+    Time.switchToUpdateContext();
+    //=================================
+
+    // Pragma.update(); // pick one
+    // Dogma.tickAll(); // pick one
+    Navi.drawSystem();
     Renderer.endBatch();
     AuroraDebugInfo.endCount();
     debug.aurora.reportGPUData(AuroraDebugInfo.getAllData);
