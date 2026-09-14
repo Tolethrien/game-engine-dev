@@ -9,9 +9,18 @@ import Draw from "@aurora/draw";
 import FPSOverlay from "./fpsOverlay";
 import InputManager from "./inputManager";
 import Navi from "../navi/navi";
+import { Signal, SignalListeners } from "../axiom/events";
+import AuroraNew from "../aurora2/core";
+
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
   declare private static context: GPUCanvasContext;
+  private static signals = {
+    windowResize: new Signal<Size2D>(),
+    engineInit: new Signal<boolean>(),
+  };
+  public static readonly events: SignalListeners<typeof Engine.signals> =
+    this.signals;
   public static async initialize({
     preload,
     setup,
@@ -21,11 +30,13 @@ export default class Engine {
   }) {
     await this.setCanvas();
     InputManager.registerEvents();
-    await Aurora.init(this.canvas);
-    Navi.initialize();
+    await AuroraNew.init(this.canvas);
+    FPSOverlay.setGpuTimeSource(() => AuroraNew.getGpuTime);
+    // Navi.initialize();
     Time.initTimer(performance.now());
     await preload();
     setup();
+    this.signals.engineInit.emit(true);
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }
   public static get ctx() {
@@ -33,37 +44,40 @@ export default class Engine {
   }
   private static loop(currentTime: number) {
     Time.update(currentTime);
-    AuroraDebugInfo.startCount(currentTime);
+    // AuroraDebugInfo.startCount(currentTime);
     InputManager.updateInputs();
-    Navi.updateSystem();
+    // Navi.updateSystem();
+    AuroraNew.beginFrame();
 
-    Renderer.beginBatch();
+    // Renderer.beginBatch();
 
     // temporary for develop ========================
-    Renderer.setGlobalIllumination([10, 0, 0]);
-    Draw.rect({
-      position: { x: 100, y: 100, z: 1 },
-      size: { height: 100, width: 100 },
-      tint: [255, 0, 255, 255],
-      emissive: 3.7,
-    });
-    Draw.pointLight({
-      position: { x: 300, y: 300, z: 1 },
-      size: { height: 500, width: 500 },
-      tint: [255, 0, 255],
-      intensity: 100,
-    });
+    // Renderer.setGlobalIllumination([10, 0, 0]);
+    // Draw.rect({
+    //   position: { x: 100, y: 100, z: 1 },
+    //   size: { height: 100, width: 100 },
+    //   tint: [255, 0, 255, 255],
+    //   emissive: 3.7,
+    // });
+    // Draw.pointLight({
+    //   position: { x: 300, y: 300, z: 1 },
+    //   size: { height: 500, width: 500 },
+    //   tint: [255, 0, 255],
+    //   intensity: 100,
+    // });
     Time.switchToUpdateContext();
     //=================================
 
     // Pragma.update(); // pick one
     // Dogma.tickAll(); // pick one
-    Navi.drawSystem();
-    Renderer.endBatch();
-    AuroraDebugInfo.endCount();
-    debug.aurora.reportGPUData(AuroraDebugInfo.getAllData);
+    // Navi.drawSystem();
+    // Renderer.endBatch();
+    // AuroraDebugInfo.endCount();
+    // debug.aurora.reportGPUData(AuroraDebugInfo.getAllData);
+    AuroraNew.endFrame();
     Time.endFrame();
     FPSOverlay.update();
+
     debug.performance.endFrame(Time.getFrameTime());
 
     requestAnimationFrame((currentTime) => this.loop(currentTime));
@@ -90,6 +104,7 @@ export default class Engine {
         if (!pendingSize) return;
         canvas.width = pendingSize.width;
         canvas.height = pendingSize.height;
+        this.signals.windowResize.emit(pendingSize);
         pendingSize = null;
         debounceTimer = null;
       }, DEBOUNCE_MS);

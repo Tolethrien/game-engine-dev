@@ -1,28 +1,26 @@
-import Renderer from "@aurora/renderer/renderer";
 import Engine from "@engine/engine";
-import auroraConfig from "@aurora/renderer/config";
 import FPSOverlay from "@engine/fpsOverlay";
 import { debug } from "@debug";
+import Aurora from "@/core/aurora2/core";
+import RenderGraph from "@/core/aurora2/renderGraph";
+import ClearPass from "@/core/aurora2/passes/clear";
+import PresentPass from "@/core/aurora2/passes/present";
+import QuadsPass from "@/core/aurora2/passes/quads";
+import GrayscalePass from "@/core/aurora2/passes/grayscale";
+import GrayscaleComputePass from "@/core/aurora2/passes/grayscaleCompute";
+import GpuTimer from "@/core/aurora2/timer";
 async function preload() {
-  const aurora = auroraConfig({
-    userTextures: [],
-    userFonts: [],
-    feature: {
-      bloom: true,
-      lighting: true,
-    },
-    debugger: "minimal",
-    camera: { builtInCameraInputs: false, speed: 0 },
-    rendering: {
-      sortOrder: "y+x+z",
-      renderRes: "1920x1080", // must be in fullHD
-      toneMapping: "none",
-      drawOrigin: "center", // don't work - must be like this
-      canvasColor: [0, 0, 0, 255],
-    },
+  await Aurora.config({
+    rendering: { transparentCanvas: false, canvasColor: [255, 25, 55, 255] },
   });
-  await Renderer.initialize(aurora);
-  // FPSOverlay.setVisible(true);
+  await RenderGraph.setPasses([
+    new ClearPass(),
+    new QuadsPass(),
+    new GrayscaleComputePass(),
+    new PresentPass(),
+  ]);
+
+  FPSOverlay.setVisible(true);
 }
 function setup() {
   debug.log.log("some data");

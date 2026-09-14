@@ -1,0 +1,7 @@
+- Tekstury fixed nie są nigdy czyszczone poza clearAll. Na przykład po zamknięciu minimapy jej tekstura zostaje w puli. Na razie to akceptowalne.
+- Klucz jako string budowany przy każdym acquire. Na optymalizację przyjdzie czas później.
+- jeśli wyłączysz jedyny pass, który robi clear na danej nazwie, pass z load zostanie wykonany na świeżej teksturze z puli, więc zamiast tła zobaczysz przypadkową zawartość (np. pozostałość z poprzedniej klatki albo inny zasób).
+- Presety: przy zmianie presetu (setPasses w trakcie gry) passy, których nie ma w nowym presecie, nie są sprzątane. Ich bufory i inne zasoby GPU zostają w pamięci. Pomysł: opcjonalna metoda destroy() w Pass, wołana przez setPasses dla usuniętych passów.
+- Presety: czy ten sam pass w dwóch presetach to osobne instancje, czy współdzielona.
+- Przebudowa passów: gdy zmieni się coś, od czego zależy setup() albo resources() (np. canvasColor w ClearPass), trzeba ponownie je wywołać. Zrobić razem z setParameter.
+- Debugger: moduł `debugger/modules/gpu.ts` tymczasowo buduje stary `AuroraSnapshot` z nowych danych (`AuroraDebugData`), żeby działały stare panele profilera (komentarz `TEMPORARY`). Stare pola (drawCalls, drawnQuads, globalIllumination itd.) są wypełnione zerami. Po skończeniu nowej Aurory: nowy snapshot, nowy kanał albo zmiana typu w `preload.d.ts`, nowe panele Performance i Aurora w profilerze, usunięcie `TEMPORARY`.

@@ -8,8 +8,16 @@ export interface ILogger {
 export interface IPerformanceModule {
   endFrame(frameTimeMs: number): void;
 }
+export interface AuroraDebugData {
+  gpuTime: number | null;
+  passTimes: { name: string; time: number }[];
+  activePasses: string[];
+  textures: number;
+}
 export interface IAuroraModule {
-  reportGPUData(data: AuroraSnapshot): void;
+  connect(source: () => Record<string, unknown>): void;
+  onCollectingChange(callback: (collecting: boolean) => void): void;
+  endFrame(): void;
 }
 export interface IDebug {
   performance: IPerformanceModule;

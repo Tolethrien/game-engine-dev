@@ -54,7 +54,6 @@ export default class Aurora {
       navigator.gpu !== undefined,
       "WebGPU is not supported on this browser.",
     );
-
     const adapter = await navigator.gpu.requestAdapter();
     assert(adapter !== null, "Failed to get GPU adapter.");
     this.adapter = adapter;

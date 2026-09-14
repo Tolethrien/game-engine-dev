@@ -1,3 +1,17 @@
+export interface SignalListener<T> {
+  connect(cb: (data: T) => void): void;
+  disconnect(cb: (data: T) => void): void;
+}
+
+export type SignalListeners<T> = {
+  readonly [K in keyof T]: T[K] extends Signal<infer D>
+    ? SignalListener<D>
+    : never;
+};
+export interface EventBusListener {
+  on<T>(name: string, cb: (data: T) => void): void;
+  off<T>(name: string, cb: (data: T) => void): void;
+}
 export class Signal<T> {
   private listeners: Set<(data: T) => void> = new Set();
   emit(data: T) {
