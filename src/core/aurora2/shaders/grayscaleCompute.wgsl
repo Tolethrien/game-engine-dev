@@ -1,7 +1,9 @@
-@group(0) @binding(0) var inputTexture: texture_2d<f32>;
-@group(0) @binding(1) var outputTexture: texture_storage_2d<rgba16float, write>;
+override groupSize: u32 = 8;
 
-@compute @workgroup_size(8, 8)
+@group(2) @binding(0) var inputTexture: texture_2d<f32>;
+@group(2) @binding(1) var outputTexture: texture_storage_2d<rgba16float, write>;
+
+@compute @workgroup_size(groupSize, groupSize)
 fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let size = textureDimensions(inputTexture);
   if (id.x >= size.x || id.y >= size.y) {

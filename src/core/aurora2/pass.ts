@@ -1,5 +1,7 @@
 import { assert } from "../axiom/utils";
+import AssetManager, { AssetName } from "./assetManager";
 import ResourcePool, { TextureDescriptor } from "./resourcePool";
+import { SamplerName } from "./sharedBinds";
 
 interface CanvasWrite {
   loadOp: GPULoadOp;
@@ -12,6 +14,10 @@ interface TextureWrite {
   clearValue?: GPUColor;
   depthClearValue?: number;
 }
+export interface PassTargets {
+  colors: GPUTextureFormat[];
+  depth?: GPUTextureFormat;
+}
 type PassEncoders = {
   render: GPURenderPassEncoder;
   compute: GPUComputePassEncoder;
@@ -21,11 +27,12 @@ export abstract class Pass<T extends keyof PassEncoders = keyof PassEncoders> {
   abstract readonly name: string;
   abstract readonly type: T;
 
-  setup(): Promise<void> | void {}
+  setup(targets: PassTargets): Promise<void> | void {}
   resources(res: PassResources): void {}
   enabled(): boolean {
     return true;
   }
+  destroy(): void {}
   abstract execute(encoder: PassEncoders[T], ctx: PassContext): void;
 }
 
@@ -34,8 +41,17 @@ export class PassResources {
   public writes: TextureWrite[] = [];
   public reads: string[] = [];
   public modifies: string[] = [];
+  public assets: AssetName[] = [];
+  public samplerName: SamplerName = "nearestClamp";
+
+  public readAsset(name: AssetName) {
+    this.assets.push(name);
+  }
   public writeCanvas(options: CanvasWrite) {
     this.canvas = options;
+  }
+  public sampler(name: SamplerName) {
+    this.samplerName = name;
   }
   public write(
     name: string,
@@ -91,5 +107,12 @@ export class PassContext {
   }
   public clearOutputs() {
     this.outputs.clear();
+  }
+  public asset(name: AssetName) {
+    assert(
+      this.declared.assets.includes(name),
+      `Pass reads asset "${name}" without declaring it in resources()`,
+    );
+    return AssetManager.getView(name);
   }
 }

@@ -1,5 +1,5 @@
-@group(0) @binding(0) var texSampler: sampler;
-@group(0) @binding(1) var sceneTexture: texture_2d<f32>;
+@group(1) @binding(5) var texSampler: sampler;
+@group(2) @binding(0) var scene: texture_2d<f32>;
 
 struct VertexOut {
   @builtin(position) position: vec4f,
@@ -8,14 +8,19 @@ struct VertexOut {
 
 @vertex
 fn vertexMain(@builtin(vertex_index) index: u32) -> VertexOut {
-  let uv = vec2f(f32((index << 1u) & 2u), f32(index & 2u));
+  var corners = array<vec2f, 6>(
+    vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(0.0, 1.0),
+    vec2f(0.0, 1.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0),
+  );
+  let corner = corners[index];
+
   var out: VertexOut;
-  out.position = vec4f(uv * vec2f(1.0, -1.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
-  out.uv = uv;
+  out.position = vec4f(corner * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
+  out.uv = corner;
   return out;
 }
 
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
-  return textureSample(sceneTexture, texSampler, in.uv);
+  return textureSample(scene, texSampler, in.uv);
 }

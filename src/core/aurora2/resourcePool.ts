@@ -76,7 +76,6 @@ export default class ResourcePool {
 
   private static createTexture(desc: TextureDescriptor, key: string) {
     const size = this.resolveSize(desc.size);
-    console.log(desc, key);
     return Aurora.device.createTexture({
       format: desc.format,
       size: {

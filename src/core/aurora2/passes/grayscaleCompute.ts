@@ -1,23 +1,25 @@
 import Aurora from "../core";
 import { Pass, PassContext, PassResources } from "../pass";
+import PassBinds, { PassBindEntries } from "../passBinds";
 import shader from "../shaders/grayscaleCompute.wgsl?raw";
 
-const WORKGROUP_SIZE = 8;
+const BINDS = {
+  input: { binding: 0, type: "texture" },
+  output: { binding: 1, type: "storageTexture", format: "rgba16float" },
+} satisfies PassBindEntries;
 
 export default class GrayscaleComputePass extends Pass<"compute"> {
   public readonly name = "grayscaleCompute";
   public readonly type = "compute";
   declare private pipeline: GPUComputePipeline;
+  declare private binds: PassBinds<typeof BINDS>;
 
   async setup() {
-    const module = Aurora.device.createShaderModule({
-      label: "grayscaleComputeShader",
-      code: shader,
-    });
-    this.pipeline = await Aurora.device.createComputePipelineAsync({
-      label: "grayscaleComputePipeline",
-      layout: "auto",
-      compute: { module, entryPoint: "computeMain" },
+    this.binds = new PassBinds("grayscaleCompute", BINDS);
+    this.pipeline = await Aurora.createComputePipeline({
+      label: "grayscaleCompute",
+      shader,
+      binds: this.binds.layout,
     });
   }
 
@@ -26,20 +28,14 @@ export default class GrayscaleComputePass extends Pass<"compute"> {
   }
 
   execute(encoder: GPUComputePassEncoder, ctx: PassContext) {
-    const bindGroup = Aurora.device.createBindGroup({
-      label: "grayscaleComputeBind",
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: ctx.view("scene") },
-        { binding: 1, resource: ctx.output("scene") },
-      ],
-    });
-    const { width, height } = Aurora.getRenderSize;
     encoder.setPipeline(this.pipeline);
-    encoder.setBindGroup(0, bindGroup);
-    encoder.dispatchWorkgroups(
-      Math.ceil(width / WORKGROUP_SIZE),
-      Math.ceil(height / WORKGROUP_SIZE),
+    encoder.setBindGroup(
+      2,
+      this.binds.get({
+        input: ctx.view("scene"),
+        output: ctx.output("scene"),
+      }),
     );
+    Aurora.dispatch(encoder, Aurora.getRenderSize);
   }
 }

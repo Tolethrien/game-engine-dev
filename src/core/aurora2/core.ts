@@ -1,27 +1,41 @@
 import { assert, deepMerge } from "../axiom/utils";
 import Engine from "../engine/engine";
+import AssetManager from "./assetManager";
 import {
   AuroraConfig,
   BASE_CONFIG,
   ChangeableRenderConfig,
   RenderRes,
 } from "./config";
+import { PassTargets } from "./pass";
 import RenderGraph from "./renderGraph";
 import ResourcePool from "./resourcePool";
+import SharedBinds, { CameraData, GlobalBinding } from "./sharedBinds";
 import GpuTimer from "./timer";
 import { debug } from "@debug";
-/**
- * core jest odpowiedzialny w sumie za start i caly graph
- * utils to beda wrappery webgpu
- *
- *
- */
+export interface RenderPipelineOptions {
+  label: string;
+  shader: string;
+  buffers?: GPUVertexBufferLayout[];
+  blend?: GPUBlendState;
+  binds?: GPUBindGroupLayout;
+  depth?: { write?: boolean; compare?: GPUCompareFunction };
+  topology?: GPUPrimitiveTopology;
+  cullMode?: GPUCullMode;
+}
+export interface ComputePipelineOptions {
+  label: string;
+  shader: string;
+  binds?: GPUBindGroupLayout;
+}
 export default class Aurora {
   public static adapter: GPUAdapter;
   public static device: GPUDevice;
   public static canvas: HTMLCanvasElement;
   public static context: GPUCanvasContext;
+  private static lost = false;
   public static readonly events = {};
+  private static configured = false;
   private static pendingCanvasSize: Size2D | null = null;
   private static settings: AuroraConfig = structuredClone(BASE_CONFIG);
   private static renderSize: Size2D = this.parseRes(
@@ -44,7 +58,9 @@ export default class Aurora {
     this.device = await adapter.requestDevice({
       requiredFeatures: ["timestamp-query"],
     });
+    debug.aurora.watchDevice(this.device);
     GpuTimer.init();
+    SharedBinds.init();
     debug.aurora.connect(() => ({
       gpuTime: GpuTimer.getTime,
       passTimes: GpuTimer.getPassTimes,
@@ -60,10 +76,18 @@ export default class Aurora {
       format: format,
       alphaMode: "opaque",
     });
-
     Engine.events.windowResize.connect(
       (size) => (this.pendingCanvasSize = size),
     );
+  }
+
+  public static async build() {
+    assert(
+      this.configured,
+      "Aurora.config() must be called and awaited before the engine starts",
+    );
+    SharedBinds.buildFrame();
+    await RenderGraph.build();
   }
   public static get getRenderSize() {
     return this.renderSize;
@@ -73,6 +97,13 @@ export default class Aurora {
   }
   public static get getGpuTime() {
     return GpuTimer.getTime;
+  }
+  public static addGlobal(global: GlobalBinding) {
+    SharedBinds.addGlobal(global);
+    if (RenderGraph.isBuilt) void RenderGraph.rebuild();
+  }
+  public static setCamera(camera: Partial<CameraData>) {
+    SharedBinds.setCamera(camera);
   }
   public static beginFrame() {
     if (this.pendingCanvasSize !== null) {
@@ -92,9 +123,17 @@ export default class Aurora {
         this.renderSize = this.parseRes(this.settings.rendering.renderRes);
         ResourcePool.clear("render");
       }
+
+      const color = this.settings.rendering.canvasColor;
+      const previousColor = previous.rendering.canvasColor;
+      if (color.some((value, i) => value !== previousColor[i])) {
+        void RenderGraph.rebuild();
+      }
     }
   }
   public static endFrame() {
+    if (this.lost) return;
+    SharedBinds.updateFrame();
     RenderGraph.execute();
     debug.aurora.endFrame();
   }
@@ -113,6 +152,16 @@ export default class Aurora {
         ? "premultiplied"
         : "opaque",
     });
+    await Promise.all([
+      AssetManager.setTextures({
+        sources: this.settings.userTextures,
+        normalMaps: this.settings.rendering.normalMaps,
+        heightMaps: this.settings.rendering.heightMaps,
+      }),
+      AssetManager.setUITextures(this.settings.userUI),
+    ]);
+    SharedBinds.buildAssets();
+    this.configured = true;
   }
   private static parseRes(res: RenderRes): Size2D {
     const [width, height] = res.split("x").map(Number);
@@ -120,5 +169,77 @@ export default class Aurora {
   }
   public static setParameter(props: DeepPartial<ChangeableRenderConfig>) {
     this.pendingParameters = deepMerge(this.pendingParameters ?? {}, props);
+  }
+
+  public static createShader(label: string, code: string) {
+    const module = this.device.createShaderModule({ label, code });
+    debug.aurora.watchShader(label, module, code);
+    return module;
+  }
+  public static createRenderPipeline(
+    targets: PassTargets,
+    {
+      label,
+      shader,
+      buffers = [],
+      blend,
+      binds,
+      depth,
+      topology = "triangle-list",
+      cullMode = "none",
+    }: RenderPipelineOptions,
+  ) {
+    assert(
+      depth === undefined || targets.depth !== undefined,
+      `Pipeline "${label}" has depth options, but its pass writes no depth texture`,
+    );
+    const module = this.createShader(`${label}Shader`, shader);
+
+    return this.device.createRenderPipelineAsync({
+      label: `${label}Pipeline`,
+      layout: SharedBinds.pipelineLayout(`${label}PipelineLayout`, binds),
+      vertex: { module, entryPoint: "vertexMain", buffers },
+      fragment:
+        targets.colors.length === 0
+          ? undefined
+          : {
+              module,
+              entryPoint: "fragmentMain",
+              targets: targets.colors.map((format) => ({ format, blend })),
+            },
+      depthStencil:
+        targets.depth === undefined
+          ? undefined
+          : {
+              format: targets.depth,
+              depthWriteEnabled: depth?.write ?? true,
+              depthCompare: depth?.compare ?? "less-equal",
+            },
+      primitive: { topology, cullMode },
+    });
+  }
+  public static createComputePipeline({
+    label,
+    shader,
+    binds,
+  }: ComputePipelineOptions) {
+    const module = this.createShader(`${label}Shader`, shader);
+    return this.device.createComputePipelineAsync({
+      label: `${label}Pipeline`,
+      layout: SharedBinds.pipelineLayout(`${label}PipelineLayout`, binds),
+      compute: {
+        module,
+        entryPoint: "computeMain",
+        constants: { groupSize: this.settings.rendering.computeGroupSize },
+      },
+    });
+  }
+
+  public static dispatch(encoder: GPUComputePassEncoder, size: Size2D) {
+    const groupSize = this.settings.rendering.computeGroupSize;
+    encoder.dispatchWorkgroups(
+      Math.ceil(size.width / groupSize),
+      Math.ceil(size.height / groupSize),
+    );
   }
 }

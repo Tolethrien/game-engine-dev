@@ -1,50 +1,37 @@
 import Aurora from "../core";
-import { Pass, PassContext, PassResources } from "../pass";
+import { Pass, PassContext, PassResources, PassTargets } from "../pass";
+import PassBinds, { PassBindEntries } from "../passBinds";
+import SharedBinds from "../sharedBinds";
 import shader from "../shaders/present.wgsl?raw";
+
+const BINDS = {
+  scene: { binding: 0, type: "texture" },
+} satisfies PassBindEntries;
 
 export default class PresentPass extends Pass<"render"> {
   public readonly name = "present";
   public readonly type = "render";
   declare private pipeline: GPURenderPipeline;
-  declare private sampler: GPUSampler;
+  declare private binds: PassBinds<typeof BINDS>;
 
-  async setup() {
-    const module = Aurora.device.createShaderModule({
-      label: "presentShader",
-      code: shader,
-    });
-    this.pipeline = await Aurora.device.createRenderPipelineAsync({
-      label: "presentPipeline",
-      layout: "auto",
-      vertex: { module, entryPoint: "vertexMain" },
-      fragment: {
-        module,
-        entryPoint: "fragmentMain",
-        targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }],
-      },
-    });
-    this.sampler = Aurora.device.createSampler({
-      magFilter: "linear",
-      minFilter: "linear",
+  async setup(targets: PassTargets) {
+    this.binds = new PassBinds("present", BINDS);
+    this.pipeline = await Aurora.createRenderPipeline(targets, {
+      label: "present",
+      shader,
+      binds: this.binds.layout,
     });
   }
 
   resources(res: PassResources) {
     res.read("scene");
+    res.sampler("linearClamp");
     res.writeCanvas({ loadOp: "clear", clearValue: [0, 0, 0, 0] });
   }
 
   execute(encoder: GPURenderPassEncoder, ctx: PassContext) {
-    const bindGroup = Aurora.device.createBindGroup({
-      label: "presentBind",
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: this.sampler },
-        { binding: 1, resource: ctx.view("scene") },
-      ],
-    });
     encoder.setPipeline(this.pipeline);
-    encoder.setBindGroup(0, bindGroup);
-    encoder.draw(3);
+    encoder.setBindGroup(2, this.binds.get({ scene: ctx.view("scene") }));
+    encoder.draw(6);
   }
 }
