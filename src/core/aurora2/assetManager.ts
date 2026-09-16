@@ -126,11 +126,6 @@ export default class AssetManager {
       );
       textures.set("height", heightArr);
     }
-    for (let i = 0; i < sources.length; i++) {
-      albedoBitmaps[i]?.close();
-      normalBitmaps[i]?.close();
-      heightBitmaps[i]?.close();
-    }
 
     const pages: Map<string, AtlasPage> = new Map();
     sources.forEach((source, i) => {
@@ -142,6 +137,11 @@ export default class AssetManager {
         layerHeight,
       });
     });
+    for (let i = 0; i < sources.length; i++) {
+      albedoBitmaps[i]?.close();
+      normalBitmaps[i]?.close();
+      heightBitmaps[i]?.close();
+    }
 
     for (const name of WORLD_ASSETS) {
       this.textures.get(name)?.destroy();

@@ -13,16 +13,14 @@ export default function AuroraPanel(props: PanelProps) {
   const history = useDebugHistory(window.API.DEBUG.onAuroraSnapshot);
   const latest = () => history().at(-1);
   const count = (value?: number) => value?.toLocaleString() ?? "—";
-  const list = (values?: string[]) =>
-    values?.length ? values.join(", ") : "—";
-  const text = (value?: string) => value ?? "—";
+  const counterGroups = () => Object.entries(latest()?.counters ?? {});
 
   return (
     <CollapsiblePanel
       id="aurora"
       title="Aurora"
       live={history().length > 0}
-      defaultPinned={["drawCalls", "drawnQuads"]}
+      defaultPinned={["drawCalls", "instances"]}
       dragHandle={props.dragHandle}
     >
       <Section>Calls</Section>
@@ -48,92 +46,63 @@ export default function AuroraPanel(props: PanelProps) {
         <Slot id="computePasses" align="center">
           <Stat label="Compute" value={count(latest()?.computePasses)} />
         </Slot>
+        <Slot id="clearPasses" align="center">
+          <Stat label="Clear" value={count(latest()?.clearPasses)} />
+        </Slot>
       </SlotGroup>
 
       <Section>Geometry</Section>
 
       <SlotGroup>
-        <Slot id="drawnQuads" align="center">
-          <Stat label="Quads" value={count(latest()?.drawnQuads)} />
+        <Slot id="instances" align="center">
+          <Stat label="Instances" value={count(latest()?.instances)} />
         </Slot>
-        <Slot id="drawnLights" align="center">
-          <Stat label="Lights" value={count(latest()?.drawnLights)} />
+        <Slot id="triangles" align="center">
+          <Stat label="Triangles" value={count(latest()?.triangles)} />
         </Slot>
-        <Slot id="drawnGui" align="center">
-          <Stat label="GUI" value={count(latest()?.drawnGui)} />
-        </Slot>
-      </SlotGroup>
-
-      <SlotGroup>
-        <Slot id="drawnTriangles" align="center">
-          <Stat label="Triangles" value={count(latest()?.drawnTriangles)} />
-        </Slot>
-        <Slot id="drawnVertices" align="center">
-          <Stat label="Vertices" value={count(latest()?.drawnVertices)} />
+        <Slot id="vertices" align="center">
+          <Stat label="Vertices" value={count(latest()?.vertices)} />
         </Slot>
       </SlotGroup>
 
-      <Section>Pipelines</Section>
-      <SlotGroup>
-        <Slot pinnable={false} align="center">
-          <Table columns="auto">
-            <TableRow head>
-              <TableCell>In use</TableCell>
-            </TableRow>
+      <Section>Counters</Section>
 
-            <For each={latest()?.pipelineInUse ?? []}>
-              {(name) => (
-                <TableRow>
-                  <TableCell>{name}</TableCell>
-                </TableRow>
+      <For each={counterGroups()}>
+        {([group, values]) => (
+          <SlotGroup>
+            <For each={Object.entries(values)}>
+              {([label, value]) => (
+                <Slot id={`counter:${group}.${label}`} align="center">
+                  <Stat label={`${group} ${label}`} value={count(value)} />
+                </Slot>
               )}
             </For>
-          </Table>
-        </Slot>
+          </SlotGroup>
+        )}
+      </For>
 
-        <Slot pinnable={false} align="center">
-          <Table columns="auto">
-            <TableRow head>
-              <TableCell>Effect</TableCell>
-            </TableRow>
+      <Section>Resources</Section>
 
-            <For each={latest()?.usedPostProcessing ?? []}>
-              {(effect) => (
-                <TableRow>
-                  <TableCell>{effect}</TableCell>
-                </TableRow>
-              )}
-            </For>
-          </Table>
+      <SlotGroup>
+        <Slot id="textures" align="center">
+          <Stat label="Textures" value={count(latest()?.textures)} />
         </Slot>
       </SlotGroup>
 
-      <Section>Config</Section>
+      <Section>Passes in use</Section>
 
       <Slot pinnable={false} align="center">
-        <Table columns="auto auto">
+        <Table columns="auto">
           <TableRow head>
-            <TableCell>Setting</TableCell>
-            <TableCell>Value</TableCell>
+            <TableCell>Name</TableCell>
           </TableRow>
-          <TableRow>
-            <TableCell>Sort order</TableCell>
-            <TableCell>{text(latest()?.sortOrder)}</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>Draw origin</TableCell>
-            <TableCell>{text(latest()?.drawOrigin)}</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>Displayed texture</TableCell>
-            <TableCell>{text(latest()?.displayedTexture)}</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>Global illumination</TableCell>
-            <TableCell>
-              {latest()?.globalIllumination.join(", ") ?? "—"}
-            </TableCell>
-          </TableRow>
+          <For each={latest()?.pipelineInUse ?? []}>
+            {(name) => (
+              <TableRow>
+                <TableCell>{name}</TableCell>
+              </TableRow>
+            )}
+          </For>
         </Table>
       </Slot>
     </CollapsiblePanel>

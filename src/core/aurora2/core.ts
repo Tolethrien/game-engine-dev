@@ -222,29 +222,34 @@ export default class Aurora {
       values[name] = Number(constants[name]);
     }
 
-    return this.device.createRenderPipelineAsync({
-      label: `${label}Pipeline`,
-      layout: SharedBinds.pipelineLayout(`${label}PipelineLayout`, binds),
-      vertex: { module, entryPoint: vertexEntry, buffers, constants: values },
-      fragment:
-        targets.colors.length === 0
-          ? undefined
-          : {
-              module,
-              entryPoint: fragmentEntry,
-              targets: targets.colors.map((format) => ({ format, blend })),
-              constants: values,
-            },
-      depthStencil:
-        targets.depth === undefined
-          ? undefined
-          : {
-              format: targets.depth,
-              depthWriteEnabled: depth?.write ?? true,
-              depthCompare: depth?.compare ?? "less-equal",
-            },
-      primitive: { topology, cullMode },
-    });
+    return this.device
+      .createRenderPipelineAsync({
+        label: `${label}Pipeline`,
+        layout: SharedBinds.pipelineLayout(`${label}PipelineLayout`, binds),
+        vertex: { module, entryPoint: vertexEntry, buffers, constants: values },
+        fragment:
+          targets.colors.length === 0
+            ? undefined
+            : {
+                module,
+                entryPoint: fragmentEntry,
+                targets: targets.colors.map((format) => ({ format, blend })),
+                constants: values,
+              },
+        depthStencil:
+          targets.depth === undefined
+            ? undefined
+            : {
+                format: targets.depth,
+                depthWriteEnabled: depth?.write ?? true,
+                depthCompare: depth?.compare ?? "less-equal",
+              },
+        primitive: { topology, cullMode },
+      })
+      .then((pipeline) => {
+        debug.aurora.watchPipeline(pipeline, topology);
+        return pipeline;
+      });
   }
   public static createComputePipeline({
     label,

@@ -13,3 +13,4 @@ type BoxAABB = { min: { x: number; y: number }; max: { x: number; y: number } };
 type Circle = { x: number; y: number; r: number };
 type Rect = { x: number; y: number; w: number; h: number; rotation: number };
 type Capsule = { a: Position2D; b: Position2D; radius: number };
+type Crop = { x: number; y: number; width: number; height: number };

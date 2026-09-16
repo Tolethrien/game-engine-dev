@@ -12,22 +12,19 @@ declare global {
   interface AuroraSnapshot {
     GPUTime: number;
     CPUTime: number;
+    pipelineTimes: { name: string; time: number }[];
+    pipelineInUse: string[];
     drawCalls: number;
     computeCalls: number;
     totalCalls: number;
     renderPasses: number;
     computePasses: number;
-    drawnQuads: number;
-    drawnGui: number;
-    drawnLights: number;
-    drawnTriangles: number;
-    drawnVertices: number;
-    pipelineInUse: string[];
-    usedPostProcessing: string[];
-    pipelineTimes: { name: string; time: number }[];
-    displayedTexture: string;
-    globalIllumination: RGB;
-    sortOrder: string;
-    drawOrigin: string;
+    clearPasses: number;
+    instances: number;
+    vertices: number;
+    triangles: number;
+    textures: number;
+    /** per source, e.g. { draw: { bodies: 120 } } */
+    counters: Record<string, Record<string, number>>;
   }
 }

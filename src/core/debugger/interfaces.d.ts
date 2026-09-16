@@ -14,12 +14,22 @@ export interface AuroraDebugData {
   activePasses: string[];
   textures: number;
 }
+export type AuroraCounters = () => Record<string, number>;
 export interface IAuroraModule {
   connect(source: () => AuroraDebugData): void;
   onCollectingChange(callback: (collecting: boolean) => void): void;
   endFrame(): void;
   watchDevice(device: GPUDevice): void;
   watchShader(label: string, module: GPUShaderModule, code: string): void;
+  watchPipeline(
+    pipeline: GPURenderPipeline,
+    topology: GPUPrimitiveTopology,
+  ): void;
+  watchRender(encoder: GPURenderPassEncoder): GPURenderPassEncoder;
+  watchCompute(encoder: GPUComputePassEncoder): GPUComputePassEncoder;
+  watchClear(): void;
+  connectCounters(name: string, source: AuroraCounters): void;
+  disconnectCounters(name: string, source: AuroraCounters): void;
 }
 export interface IDebug {
   performance: IPerformanceModule;

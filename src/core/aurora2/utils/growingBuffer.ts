@@ -97,6 +97,16 @@ export default class GrowingBuffer {
     this.bytes = new Uint8Array(data);
   }
 
+  public push() {
+    if (this.count === this.capacity) this.resize(this.capacity * 2);
+    return this.count++;
+  }
+
+  public clear() {
+    this.begin(this.count);
+    this.count = 0;
+  }
+
   public upload() {
     if (this.gpuCapacity !== this.capacity) {
       this.buffer.destroy();
@@ -115,6 +125,15 @@ export default class GrowingBuffer {
 
   public destroy() {
     this.buffer.destroy();
+  }
+
+  private resize(capacity: number) {
+    const data = new ArrayBuffer(capacity * this.stride * WORD);
+    new Uint8Array(data).set(this.bytes);
+    this.capacity = capacity;
+    this.floats = new Float32Array(data);
+    this.uints = new Uint32Array(data);
+    this.bytes = new Uint8Array(data);
   }
 
   private createGPUBuffer() {

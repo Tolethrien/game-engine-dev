@@ -1,4 +1,5 @@
 import { assert } from "@axiom/utils";
+import { debug } from "@debug";
 import AssetManager, { AssetName } from "./assetManager";
 import ResourcePool, { DEPTH_FORMATS, TextureDescriptor } from "./resourcePool";
 import SharedBinds, { SamplerName } from "./sharedBinds";
@@ -327,22 +328,26 @@ export class MultiPassContext extends PassContext {
       }
     }
 
-    const renderPass = this.encoder.beginRenderPass({
-      label: `${this.passName}:${label}`,
-      colorAttachments,
-      depthStencilAttachment,
-      timestampWrites: GpuTimer.stepWrites(),
-    });
+    const renderPass = debug.aurora.watchRender(
+      this.encoder.beginRenderPass({
+        label: `${this.passName}:${label}`,
+        colorAttachments,
+        depthStencilAttachment,
+        timestampWrites: GpuTimer.stepWrites(),
+      }),
+    );
     renderPass.setBindGroup(0, SharedBinds.getFrame);
     renderPass.setBindGroup(1, SharedBinds.getAssets(this.declared.samplerName));
     return renderPass;
   }
 
   public beginCompute(label: string) {
-    const computePass = this.encoder.beginComputePass({
-      label: `${this.passName}:${label}`,
-      timestampWrites: GpuTimer.stepWrites(),
-    });
+    const computePass = debug.aurora.watchCompute(
+      this.encoder.beginComputePass({
+        label: `${this.passName}:${label}`,
+        timestampWrites: GpuTimer.stepWrites(),
+      }),
+    );
     computePass.setBindGroup(0, SharedBinds.getFrame);
     computePass.setBindGroup(
       1,

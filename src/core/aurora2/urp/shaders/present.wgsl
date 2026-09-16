@@ -1,9 +1,11 @@
-@group(2) @binding(0) var scene: texture_2d<f32>;
+@group(1) @binding(5) var texSampler: sampler;
+@group(2) @binding(0) var offscreenCanvas: texture_2d<f32>;
 
 override linearColors: bool = true;
 
 struct VertexOut {
   @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
 };
 
 fn outputColor(color: vec3f) -> vec3f {
@@ -25,15 +27,20 @@ fn vertexMain(@builtin(vertex_index) index: u32) -> VertexOut {
 
   var out: VertexOut;
   out.position = vec4f(corner * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
+  out.uv = corner;
   return out;
 }
 
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
-  let color = clamp(textureLoad(scene, vec2u(in.position.xy), 0), vec4f(0.0), vec4f(1.0));
+  let color = clamp(
+    textureSample(offscreenCanvas, texSampler, in.uv),
+    vec4f(0.0),
+    vec4f(1.0),
+  );
   if (color.a <= 0.0) {
     return vec4f(0.0);
   }
-  let straight = color.rgb / color.a;
+  let straight = min(color.rgb / color.a, vec3f(1.0));
   return vec4f(outputColor(straight) * color.a, color.a);
 }

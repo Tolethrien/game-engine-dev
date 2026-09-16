@@ -1,10 +1,15 @@
-import Aurora from "../core";
-import { RenderPass, PassContext, PassResources, PassTargets } from "../pass";
-import PassBinds, { PassBindEntries } from "../passBinds";
+import Aurora from "../../core";
+import {
+  RenderPass,
+  PassContext,
+  PassResources,
+  PassTargets,
+} from "../../pass";
+import PassBinds, { PassBindEntries } from "../../passBinds";
 import shader from "../shaders/present.wgsl?raw";
 
 const BINDS = {
-  ldr: { binding: 0, type: "texture" },
+  offscreenCanvas: { binding: 0, type: "texture" },
 } satisfies PassBindEntries;
 
 export default class PresentPass extends RenderPass {
@@ -18,18 +23,22 @@ export default class PresentPass extends RenderPass {
       label: "present",
       shader,
       binds: this.binds.layout,
+      constants: { linearColors: Aurora.isLinear },
     });
   }
 
   resources(res: PassResources) {
-    res.read("ldr");
+    res.read("offscreenCanvas");
     res.sampler("linearClamp");
     res.writeCanvas({ loadOp: "clear", clearValue: [0, 0, 0, 0] });
   }
 
   execute(encoder: GPURenderPassEncoder, ctx: PassContext) {
     encoder.setPipeline(this.pipeline);
-    encoder.setBindGroup(2, this.binds.get({ ldr: ctx.view("ldr") }));
+    encoder.setBindGroup(
+      2,
+      this.binds.get({ offscreenCanvas: ctx.view("offscreenCanvas") }),
+    );
     encoder.draw(6);
   }
 }

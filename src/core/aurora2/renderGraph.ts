@@ -1,4 +1,5 @@
 import { assert } from "@axiom/utils";
+import { debug } from "@debug";
 import AssetManager from "./assetManager";
 import Aurora from "./core";
 import {
@@ -207,6 +208,7 @@ export default class RenderGraph {
       for (const name of declared.reads) unread.delete(name);
       for (const name of declared.modifies) unread.set(name, pass.name);
       for (const write of declared.writes) {
+        if (DEPTH_FORMATS.has(write.desc.format)) continue;
         const writer = unread.get(write.name);
         if (writer !== undefined && write.loadOp === "clear") {
           console.warn(
@@ -243,10 +245,12 @@ export default class RenderGraph {
 
     const newVersions = this.newVersions(encoder, pass, declared, ctx, 0);
 
-    const computePass = encoder.beginComputePass({
-      label: pass.name,
-      timestampWrites: GpuTimer.stepWrites(),
-    });
+    const computePass = debug.aurora.watchCompute(
+      encoder.beginComputePass({
+        label: pass.name,
+        timestampWrites: GpuTimer.stepWrites(),
+      }),
+    );
     computePass.setBindGroup(0, SharedBinds.getFrame);
     computePass.setBindGroup(1, SharedBinds.getAssets(declared.samplerName));
     pass.execute(computePass, ctx);
@@ -320,12 +324,14 @@ export default class RenderGraph {
       });
     }
 
-    const renderPass = encoder.beginRenderPass({
-      label: pass.name,
-      colorAttachments,
-      depthStencilAttachment,
-      timestampWrites: GpuTimer.stepWrites(),
-    });
+    const renderPass = debug.aurora.watchRender(
+      encoder.beginRenderPass({
+        label: pass.name,
+        colorAttachments,
+        depthStencilAttachment,
+        timestampWrites: GpuTimer.stepWrites(),
+      }),
+    );
     renderPass.setBindGroup(0, SharedBinds.getFrame);
     renderPass.setBindGroup(1, SharedBinds.getAssets(declared.samplerName));
     pass.execute(renderPass, ctx);
@@ -547,6 +553,7 @@ export default class RenderGraph {
       depthStencilAttachment.stencilLoadOp = "clear";
       depthStencilAttachment.stencilStoreOp = "store";
     }
+    debug.aurora.watchClear();
     encoder
       .beginRenderPass({
         label,
@@ -565,6 +572,7 @@ export default class RenderGraph {
   ) {
     for (let mip = fromMip; mip < texture.mipLevelCount; mip++) {
       const mipLabel = `${label}:mip${mip}`;
+      debug.aurora.watchClear();
       encoder
         .beginRenderPass({
           label: mipLabel,
