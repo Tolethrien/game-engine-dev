@@ -15,9 +15,11 @@ export interface AuroraDebugData {
   textures: number;
 }
 export interface IAuroraModule {
-  connect(source: () => Record<string, unknown>): void;
+  connect(source: () => AuroraDebugData): void;
   onCollectingChange(callback: (collecting: boolean) => void): void;
   endFrame(): void;
+  watchDevice(device: GPUDevice): void;
+  watchShader(label: string, module: GPUShaderModule, code: string): void;
 }
 export interface IDebug {
   performance: IPerformanceModule;

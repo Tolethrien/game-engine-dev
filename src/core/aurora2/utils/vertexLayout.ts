@@ -1,16 +1,24 @@
-import { assert } from "@/core/axiom/utils";
+import { assert } from "@axiom/utils";
 import GrowingBuffer from "./growingBuffer";
 
+type FormatView = "floats" | "uints" | "bytes";
+interface FormatInfo {
+  words: number;
+  components: number;
+  view: FormatView;
+}
+
 const VERTEX_FORMATS = {
-  float32: 1,
-  float32x2: 2,
-  float32x3: 3,
-  float32x4: 4,
-  uint32: 1,
-  uint32x2: 2,
-  uint32x3: 3,
-  uint32x4: 4,
-} as const;
+  float32: { words: 1, components: 1, view: "floats" },
+  float32x2: { words: 2, components: 2, view: "floats" },
+  float32x3: { words: 3, components: 3, view: "floats" },
+  float32x4: { words: 4, components: 4, view: "floats" },
+  uint32: { words: 1, components: 1, view: "uints" },
+  uint32x2: { words: 2, components: 2, view: "uints" },
+  uint32x3: { words: 3, components: 3, view: "uints" },
+  uint32x4: { words: 4, components: 4, view: "uints" },
+  unorm8x4: { words: 1, components: 4, view: "bytes" },
+} as const satisfies Record<string, FormatInfo>;
 const WORD = 4;
 
 export type VertexFormat = keyof typeof VERTEX_FORMATS;
@@ -55,7 +63,7 @@ export default class VertexLayout<T extends VertexFields> {
         offset: stride * WORD,
         format,
       });
-      stride += VERTEX_FORMATS[format];
+      stride += VERTEX_FORMATS[format].words;
     }
 
     this.stride = stride;
@@ -68,27 +76,43 @@ export default class VertexLayout<T extends VertexFields> {
       buffer.getStride === this.stride,
       `Buffer stride ${buffer.getStride} does not match vertex layout stride ${this.stride}`,
     );
-    const state = { base: 0, floats: buffer.getFloats, uints: buffer.getUints };
+    const state = {
+      base: 0,
+      floats: buffer.getFloats,
+      uints: buffer.getUints,
+      bytes: buffer.getBytes,
+    };
     const writer: Record<string, unknown> = {
       at: (index: number) => {
         state.base = index * this.stride;
         state.floats = buffer.getFloats;
         state.uints = buffer.getUints;
+        state.bytes = buffer.getBytes;
       },
     };
 
     for (const name of Object.keys(this.fields)) {
-      const format = this.fields[name];
+      const { components, view } = VERTEX_FORMATS[this.fields[name]];
       const offset = this.offsets[name];
-      const components = VERTEX_FORMATS[format];
-      const uint = format.startsWith("uint");
+
+      if (view === "bytes") {
+        writer[name] = (a: number, b: number, c: number, d: number) => {
+          const o = (state.base + offset) * WORD;
+          state.bytes[o] = a;
+          state.bytes[o + 1] = b;
+          state.bytes[o + 2] = c;
+          state.bytes[o + 3] = d;
+        };
+        continue;
+      }
+
       writer[name] = (a: number, b: number, c: number, d: number) => {
-        const view = uint ? state.uints : state.floats;
+        const target = view === "uints" ? state.uints : state.floats;
         const o = state.base + offset;
-        view[o] = a;
-        if (components > 1) view[o + 1] = b;
-        if (components > 2) view[o + 2] = c;
-        if (components > 3) view[o + 3] = d;
+        target[o] = a;
+        if (components > 1) target[o + 1] = b;
+        if (components > 2) target[o + 2] = c;
+        if (components > 3) target[o + 3] = d;
       };
     }
     return writer as VertexWriter<T>;

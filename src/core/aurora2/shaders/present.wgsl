@@ -1,5 +1,5 @@
 @group(1) @binding(5) var texSampler: sampler;
-@group(2) @binding(0) var scene: texture_2d<f32>;
+@group(2) @binding(0) var ldr: texture_2d<f32>;
 
 struct VertexOut {
   @builtin(position) position: vec4f,
@@ -22,5 +22,5 @@ fn vertexMain(@builtin(vertex_index) index: u32) -> VertexOut {
 
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
-  return textureSample(scene, texSampler, in.uv);
+  return textureSample(ldr, texSampler, in.uv);
 }

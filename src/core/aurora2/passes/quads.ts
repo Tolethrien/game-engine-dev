@@ -1,5 +1,5 @@
 import Aurora from "../core";
-import { Pass, PassResources, PassTargets } from "../pass";
+import { RenderPass, PassResources, PassTargets } from "../pass";
 import SharedBinds from "../sharedBinds";
 import shader from "../shaders/quads.wgsl?raw";
 import VertexLayout, { VertexFields } from "../utils/vertexLayout";
@@ -9,18 +9,18 @@ import Blend from "../utils/blend";
 const QUAD_FIELDS = {
   position: "float32x2",
   size: "float32x2",
-  color: "float32x4",
+  color: "unorm8x4",
 } satisfies VertexFields;
 const QUAD_VERTEX = new VertexLayout(QUAD_FIELDS, { stepMode: "instance" });
 const QUADS = [
-  { x: 100, y: 100, w: 200, h: 120, color: [1.0, 0.2, 0.2, 1.0] },
-  { x: 250, y: 180, w: 150, h: 150, color: [0.2, 1.0, 0.2, 1.0] },
-  { x: 330, y: 60, w: 120, h: 260, color: [0.2, 0.4, 1.0, 0.7] },
+  { x: 100, y: 100, w: 200, h: 120, color: [255, 51, 51, 255] },
+  { x: 250, y: 180, w: 150, h: 150, color: [51, 255, 51, 255] },
+  { x: 330, y: 60, w: 120, h: 260, color: [51, 102, 255, 178] },
+  { x: 450, y: 100, w: 200, h: 200, color: [0, 0, 0, 128] },
 ];
 
-export default class QuadsPass extends Pass<"render"> {
+export default class QuadsPass extends RenderPass {
   public readonly name = "quads";
-  public readonly type = "render";
   declare private pipeline: GPURenderPipeline;
   declare private quads: GrowingBuffer;
 
@@ -30,6 +30,7 @@ export default class QuadsPass extends Pass<"render"> {
       shader,
       buffers: [QUAD_VERTEX.layout],
       blend: Blend.alpha,
+      constants: { linearColors: Aurora.isLinear },
     });
 
     this.quads = new GrowingBuffer({
@@ -51,16 +52,8 @@ export default class QuadsPass extends Pass<"render"> {
   }
 
   resources(res: PassResources) {
-    res.write(
-      "scene",
-      { size: { scale: 1 }, format: "rgba16float" },
-      { loadOp: "load" },
-    );
-    res.write(
-      "depth",
-      { size: { scale: 1 }, format: "depth24plus" },
-      { loadOp: "clear" },
-    );
+    res.write("scene");
+    res.create("depth", { size: { scale: 1 }, format: "depth24plus" });
   }
 
   execute(encoder: GPURenderPassEncoder) {

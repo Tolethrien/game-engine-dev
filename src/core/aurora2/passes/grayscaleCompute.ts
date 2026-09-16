@@ -1,5 +1,5 @@
 import Aurora from "../core";
-import { Pass, PassContext, PassResources } from "../pass";
+import { ComputePass, PassContext, PassResources } from "../pass";
 import PassBinds, { PassBindEntries } from "../passBinds";
 import shader from "../shaders/grayscaleCompute.wgsl?raw";
 
@@ -8,9 +8,8 @@ const BINDS = {
   output: { binding: 1, type: "storageTexture", format: "rgba16float" },
 } satisfies PassBindEntries;
 
-export default class GrayscaleComputePass extends Pass<"compute"> {
+export default class GrayscaleComputePass extends ComputePass {
   public readonly name = "grayscaleCompute";
-  public readonly type = "compute";
   declare private pipeline: GPUComputePipeline;
   declare private binds: PassBinds<typeof BINDS>;
 
@@ -36,6 +35,6 @@ export default class GrayscaleComputePass extends Pass<"compute"> {
         output: ctx.output("scene"),
       }),
     );
-    Aurora.dispatch(encoder, Aurora.getRenderSize);
+    Aurora.dispatch(encoder, ctx.size("scene"));
   }
 }

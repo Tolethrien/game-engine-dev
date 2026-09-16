@@ -1,4 +1,4 @@
-import { assert } from "../axiom/utils";
+import { assert } from "@axiom/utils";
 import Aurora from "./core";
 
 type SizeBase = "render" | "canvas";
@@ -76,6 +76,13 @@ export default class ResourcePool {
 
   private static createTexture(desc: TextureDescriptor, key: string) {
     const size = this.resolveSize(desc.size);
+    const mips = desc.mips ?? 1;
+    const maxMips =
+      Math.floor(Math.log2(Math.max(size.width, size.height))) + 1;
+    assert(
+      mips <= maxMips,
+      `Texture "${key}" requests ${mips} mips, but ${size.width}x${size.height} allows at most ${maxMips}`,
+    );
     return Aurora.device.createTexture({
       format: desc.format,
       size: {
@@ -84,7 +91,7 @@ export default class ResourcePool {
         depthOrArrayLayers: desc.layers ?? 1,
       },
       usage: this.textureUsage(desc.format),
-      mipLevelCount: desc.mips ?? 1,
+      mipLevelCount: mips,
       label: key,
     });
   }

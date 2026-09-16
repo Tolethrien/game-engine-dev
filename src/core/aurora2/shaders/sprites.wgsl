@@ -16,6 +16,18 @@ struct Camera {
 @group(0) @binding(1) var<uniform> camera: Camera;
 @group(1) @binding(0) var albedo: texture_2d_array<f32>;
 @group(1) @binding(5) var texSampler: sampler;
+
+override linearColors: bool = true;
+
+fn inputColor(color: vec4f) -> vec4f {
+  if (!linearColors) {
+    return color;
+  }
+  let low = color.rgb / 12.92;
+  let high = pow((color.rgb + 0.055) / 1.055, vec3f(2.4));
+  return vec4f(select(high, low, color.rgb <= vec3f(0.04045)), color.a);
+}
+
 struct SpriteIn {
   @location(0) position: vec2f,
   @location(1) size: vec2f,
@@ -38,17 +50,17 @@ fn vertexMain(@builtin(vertex_index) index: u32, sprite: SpriteIn) -> VertexOut 
     vec2f(0.0, 1.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0),
   );
   let corner = corners[index];
- let world = sprite.position + corner * sprite.size;
-let rel = world - camera.position;
-let c = cos(camera.rotation);
-let s = sin(camera.rotation);
-let rotated = vec2f(rel.x * c - rel.y * s, rel.x * s + rel.y * c);
-let pixel = rotated * camera.zoom + frame.renderSize * 0.5;
+  let world = sprite.position + corner * sprite.size;
+  let rel = world - camera.position;
+  let c = cos(camera.rotation);
+  let s = sin(camera.rotation);
+  let rotated = vec2f(rel.x * c - rel.y * s, rel.x * s + rel.y * c);
+  let pixel = rotated * camera.zoom + frame.renderSize * 0.5;
 
-var out: VertexOut;
-out.position = vec4f(pixel / frame.renderSize * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
+  var out: VertexOut;
+  out.position = vec4f(pixel / frame.renderSize * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
   out.uv = sprite.uvRect.xy + corner * sprite.uvRect.zw;
-  out.tint = sprite.tint;
+  out.tint = inputColor(sprite.tint);
   out.layer = sprite.layer;
   return out;
 }

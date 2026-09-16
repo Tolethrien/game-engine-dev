@@ -1,8 +1,7 @@
-import { assert } from "../axiom/utils";
-import Time from "../engine/time";
+import { assert } from "@axiom/utils";
+import Time from "@engine/time";
 import AssetManager, { AssetName } from "./assetManager";
 import Aurora from "./core";
-import { ALL_STAGES } from "./renderGraph";
 export interface GlobalBinding {
   binding: number;
   visibility?: GPUShaderStageFlags;
@@ -28,7 +27,9 @@ const ASSET_BINDINGS: Record<AssetName, number> = {
 };
 const FIRST_GLOBAL_BINDING = 4;
 const SAMPLER_BINDING = 5;
-
+export const ALL_STAGES =
+  GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE;
+const TIME_WRAP = 3600;
 export default class SharedBinds {
   declare private static frameLayout: GPUBindGroupLayout;
   declare private static frameBindGroup: GPUBindGroup;
@@ -210,8 +211,8 @@ export default class SharedBinds {
     this.gameTime += Time.getDeltaTime();
     const renderSize = Aurora.getRenderSize;
 
-    this.frameFloats[0] = this.gameTime;
-    this.frameFloats[1] = Time.getTimeInSeconds();
+    this.frameFloats[0] = this.gameTime % TIME_WRAP;
+    this.frameFloats[1] = Time.getTimeInSeconds() % TIME_WRAP;
     this.frameFloats[2] = Time.getDeltaTime();
     this.frameFloats[3] = Time.getRawDeltaTime();
     this.frameFloats[4] = renderSize.width;

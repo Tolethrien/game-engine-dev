@@ -13,13 +13,15 @@ export default class GpuTimer {
   declare private static readBuffer: GPUBuffer;
   declare private static writesBegin: GPURenderPassTimestampWrites;
   declare private static writesEnd: GPURenderPassTimestampWrites;
-  declare private static writesBoth: GPURenderPassTimestampWrites;
   private static capacity = 0;
   private static perPass = false;
-  private static opened = 0;
-  private static lastOpened = 0;
+  private static slotCount = 0;
+  private static lastSlotCount = 0;
+  private static frameStarted = false;
   private static frameNames: string[] = [];
+  private static frameStepped: boolean[] = [];
   private static pendingNames: string[] = [];
+  private static pendingStepped: boolean[] = [];
   private static pendingCount = 0;
   private static pendingPerPass = false;
   private static copied = false;
@@ -36,7 +38,7 @@ export default class GpuTimer {
   }
 
   public static beginFrame() {
-    const needed = this.lastOpened * 2;
+    const needed = this.lastSlotCount * 2;
     if (
       this.perPass &&
       needed > this.capacity &&
@@ -44,36 +46,48 @@ export default class GpuTimer {
     ) {
       this.allocate(needed);
     }
-    this.opened = 0;
+    this.slotCount = 0;
+    this.frameStarted = false;
     this.frameNames.length = 0;
+    this.frameStepped.length = 0;
     this.copied = false;
   }
 
-  public static passWrites(name: string, isLast: boolean) {
-    const index = this.opened++;
+  public static beginPass(name: string) {
+    this.slotCount++;
+    if (!this.perPass) return;
+    this.frameNames.push(name);
+    this.frameStepped.push(false);
+  }
 
-    if (this.perPass) {
-      this.frameNames.push(name);
-      const begin = index * 2;
-      if (begin + 1 >= this.capacity) return undefined;
-      return {
-        querySet: this.querySet,
-        beginningOfPassWriteIndex: begin,
-        endOfPassWriteIndex: begin + 1,
-      };
+  public static stepWrites(): GPURenderPassTimestampWrites | undefined {
+    if (!this.perPass) {
+      if (this.frameStarted) return this.writesEnd;
+      this.frameStarted = true;
+      return this.writesBegin;
     }
 
-    const isFirst = index === 0;
-    if (isFirst && isLast) return this.writesBoth;
-    if (isFirst) return this.writesBegin;
-    if (isLast) return this.writesEnd;
-    return undefined;
+    const slot = this.slotCount - 1;
+    const begin = slot * 2;
+    if (slot < 0 || begin + 1 >= this.capacity) return undefined;
+    if (this.frameStepped[slot]) {
+      return { querySet: this.querySet, endOfPassWriteIndex: begin + 1 };
+    }
+    this.frameStepped[slot] = true;
+    return {
+      querySet: this.querySet,
+      beginningOfPassWriteIndex: begin,
+      endOfPassWriteIndex: begin + 1,
+    };
   }
 
   public static resolve(encoder: GPUCommandEncoder) {
-    this.lastOpened = this.opened;
-    const count = this.perPass ? this.opened * 2 : 2;
-    if (this.opened === 0 || count > this.capacity) return;
+    this.lastSlotCount = this.slotCount;
+    const count = this.perPass ? this.slotCount * 2 : 2;
+    const anyStep = this.perPass
+      ? this.frameStepped.includes(true)
+      : this.frameStarted;
+    if (!anyStep || count > this.capacity) return;
     if (this.readBuffer.mapState !== "unmapped") return;
 
     encoder.resolveQuerySet(this.querySet, 0, count, this.resolveBuffer, 0);
@@ -86,7 +100,10 @@ export default class GpuTimer {
     );
     this.pendingCount = count;
     this.pendingPerPass = this.perPass;
-    if (this.perPass) this.pendingNames = this.frameNames.slice();
+    if (this.perPass) {
+      this.pendingNames = this.frameNames.slice();
+      this.pendingStepped = this.frameStepped.slice();
+    }
     this.copied = true;
   }
 
@@ -96,12 +113,21 @@ export default class GpuTimer {
       const times = new BigUint64Array(
         this.readBuffer.getMappedRange(0, this.pendingCount * BYTES_PER_QUERY),
       );
-      this.time = this.diff(times[0], times[this.pendingCount - 1]);
-      if (this.pendingPerPass && this.perPass) {
-        this.passTimes = this.pendingNames.map((name, i) => ({
-          name,
-          time: this.diff(times[i * 2], times[i * 2 + 1]),
-        }));
+
+      if (!this.pendingPerPass) {
+        this.time = this.diff(times[0], times[1]);
+      } else {
+        const first = this.pendingStepped.indexOf(true);
+        const last = this.pendingStepped.lastIndexOf(true);
+        this.time = this.diff(times[first * 2], times[last * 2 + 1]);
+        if (this.perPass) {
+          this.passTimes = this.pendingNames.map((name, i) => ({
+            name,
+            time: this.pendingStepped[i]
+              ? this.diff(times[i * 2], times[i * 2 + 1])
+              : 0,
+          }));
+        }
       }
       this.readBuffer.unmap();
     });
@@ -143,12 +169,8 @@ export default class GpuTimer {
     this.writesBegin = {
       querySet: this.querySet,
       beginningOfPassWriteIndex: 0,
-    };
-    this.writesEnd = { querySet: this.querySet, endOfPassWriteIndex: 1 };
-    this.writesBoth = {
-      querySet: this.querySet,
-      beginningOfPassWriteIndex: 0,
       endOfPassWriteIndex: 1,
     };
+    this.writesEnd = { querySet: this.querySet, endOfPassWriteIndex: 1 };
   }
 }

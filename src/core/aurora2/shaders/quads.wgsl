@@ -15,6 +15,17 @@ struct Camera {
 @group(0) @binding(0) var<uniform> frame: Frame;
 @group(0) @binding(1) var<uniform> camera: Camera;
 
+override linearColors: bool = true;
+
+fn inputColor(color: vec4f) -> vec4f {
+  if (!linearColors) {
+    return color;
+  }
+  let low = color.rgb / 12.92;
+  let high = pow((color.rgb + 0.055) / 1.055, vec3f(2.4));
+  return vec4f(select(high, low, color.rgb <= vec3f(0.04045)), color.a);
+}
+
 struct QuadIn {
   @location(0) position: vec2f,
   @location(1) size: vec2f,
@@ -42,7 +53,7 @@ fn vertexMain(@builtin(vertex_index) index: u32, quad: QuadIn) -> VertexOut {
 
   var out: VertexOut;
   out.position = vec4f(ndc, 0.0, 1.0);
-  out.color = quad.color;
+  out.color = inputColor(quad.color);
   return out;
 }
 

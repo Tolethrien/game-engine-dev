@@ -1,4 +1,4 @@
-import { assert, loadImg } from "../axiom/utils";
+import { assert, loadImg } from "@axiom/utils";
 import Aurora from "./core";
 
 export type AssetName = "albedo" | "normal" | "height" | "ui";
@@ -26,7 +26,8 @@ export interface AtlasPage {
   layerHeight: number;
 }
 
-const ALBEDO_FORMAT: GPUTextureFormat = "rgba8unorm";
+const ALBEDO_FORMAT_LINEAR: GPUTextureFormat = "rgba8unorm-srgb";
+const ALBEDO_FORMAT_GAMMA: GPUTextureFormat = "rgba8unorm";
 const NORMAL_FORMAT: GPUTextureFormat = "rgba8unorm";
 const HEIGHT_FORMAT: GPUTextureFormat = "r8unorm";
 const ALBEDO_NEUTRAL = [255, 255, 255, 255];
@@ -96,7 +97,7 @@ export default class AssetManager {
     const textures: Map<AssetName, GPUTexture> = new Map();
     const albedoArr = this.buildArray(
       "albedo",
-      ALBEDO_FORMAT,
+      Aurora.isLinear ? ALBEDO_FORMAT_LINEAR : ALBEDO_FORMAT_GAMMA,
       ALBEDO_NEUTRAL,
       albedoBitmaps,
       layerWidth,

@@ -15,6 +15,7 @@ import AuroraNew from "../aurora2/core";
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
   declare private static context: GPUCanvasContext;
+  private static update: (() => void) | null = null;
   private static signals = {
     windowResize: new Signal<Size2D>(),
     engineInit: new Signal<boolean>(),
@@ -24,10 +25,13 @@ export default class Engine {
   public static async initialize({
     preload,
     setup,
+    update,
   }: {
     preload: () => Promise<void>;
     setup: () => void;
+    update?: () => void;
   }) {
+    this.update = update ?? null;
     await this.setCanvas();
     InputManager.registerEvents();
     await AuroraNew.init(this.canvas);
@@ -36,6 +40,7 @@ export default class Engine {
     Time.initTimer(performance.now());
     await preload();
     setup();
+    await AuroraNew.build();
     this.signals.engineInit.emit(true);
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }
@@ -66,6 +71,7 @@ export default class Engine {
     //   intensity: 100,
     // });
     Time.switchToUpdateContext();
+    this.update?.();
     //=================================
 
     // Pragma.update(); // pick one

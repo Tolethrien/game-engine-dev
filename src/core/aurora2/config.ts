@@ -2,6 +2,7 @@ import { TextureSource, UISource } from "./assetManager";
 
 export type RenderRes = "1920x1080" | "1280x720" | "854x480" | "640x360";
 export type Profiler = "none" | "minimal" | "normal" | "extended";
+export type ColorSpace = "linear" | "gamma";
 
 export interface AuroraConfig {
   rendering: {
@@ -11,6 +12,7 @@ export interface AuroraConfig {
     computeGroupSize: 8 | 16;
     normalMaps: boolean;
     heightMaps: boolean;
+    colorSpace: ColorSpace;
   };
   userTextures: TextureSource[];
   userUI: UISource[];
@@ -27,6 +29,7 @@ export const BASE_CONFIG: AuroraConfig = {
     computeGroupSize: 8,
     normalMaps: false,
     heightMaps: false,
+    colorSpace: "linear",
   },
   userTextures: [],
   userUI: [],

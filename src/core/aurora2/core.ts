@@ -1,5 +1,5 @@
-import { assert, deepMerge } from "../axiom/utils";
-import Engine from "../engine/engine";
+import { assert, deepMerge } from "@axiom/utils";
+import Engine from "@engine/engine";
 import AssetManager from "./assetManager";
 import {
   AuroraConfig,
@@ -7,7 +7,7 @@ import {
   ChangeableRenderConfig,
   RenderRes,
 } from "./config";
-import { PassTargets } from "./pass";
+import { PipelineTargets } from "./pass";
 import RenderGraph from "./renderGraph";
 import ResourcePool from "./resourcePool";
 import SharedBinds, { CameraData, GlobalBinding } from "./sharedBinds";
@@ -22,11 +22,15 @@ export interface RenderPipelineOptions {
   depth?: { write?: boolean; compare?: GPUCompareFunction };
   topology?: GPUPrimitiveTopology;
   cullMode?: GPUCullMode;
+  vertexEntry?: string;
+  fragmentEntry?: string;
+  constants?: Record<string, number | boolean>;
 }
 export interface ComputePipelineOptions {
   label: string;
   shader: string;
   binds?: GPUBindGroupLayout;
+  entry?: string;
 }
 export default class Aurora {
   public static adapter: GPUAdapter;
@@ -34,9 +38,9 @@ export default class Aurora {
   public static canvas: HTMLCanvasElement;
   public static context: GPUCanvasContext;
   private static lost = false;
-  public static readonly events = {};
   private static configured = false;
   private static pendingCanvasSize: Size2D | null = null;
+  declare private static canvasFormat: GPUTextureFormat;
   private static settings: AuroraConfig = structuredClone(BASE_CONFIG);
   private static renderSize: Size2D = this.parseRes(
     BASE_CONFIG.rendering.renderRes,
@@ -70,10 +74,10 @@ export default class Aurora {
     debug.aurora.onCollectingChange((collecting) =>
       GpuTimer.setPerPass(collecting),
     );
-    const format = navigator.gpu.getPreferredCanvasFormat();
+    this.canvasFormat = navigator.gpu.getPreferredCanvasFormat();
     ctx.configure({
       device: this.device,
-      format: format,
+      format: this.canvasFormat,
       alphaMode: "opaque",
     });
     Engine.events.windowResize.connect(
@@ -92,11 +96,23 @@ export default class Aurora {
   public static get getRenderSize() {
     return this.renderSize;
   }
-  public static get getSettings() {
+  public static get getSettings(): DeepReadonly<AuroraConfig> {
     return this.settings;
   }
   public static get getGpuTime() {
     return GpuTimer.getTime;
+  }
+  public static get isLinear() {
+    return this.settings.rendering.colorSpace === "linear";
+  }
+  public static colorChannel(value: number) {
+    const channel = value / 255;
+    if (!this.isLinear) return channel;
+    if (channel <= 0.04045) return channel / 12.92;
+    return ((channel + 0.055) / 1.055) ** 2.4;
+  }
+  public static get getCanvasFormat() {
+    return this.canvasFormat;
   }
   public static addGlobal(global: GlobalBinding) {
     SharedBinds.addGlobal(global);
@@ -142,12 +158,16 @@ export default class Aurora {
     this.device.destroy();
   }
   public static async config(props: DeepPartial<AuroraConfig>) {
+    assert(
+      !RenderGraph.isBuilt,
+      "Aurora.config() can only be called before the engine starts, use Aurora.setParameter() instead",
+    );
     const config = deepMerge(structuredClone(BASE_CONFIG), props);
     this.settings = config;
     this.renderSize = this.parseRes(config.rendering.renderRes);
     this.context.configure({
       device: this.device,
-      format: navigator.gpu.getPreferredCanvasFormat(),
+      format: this.canvasFormat,
       alphaMode: config.rendering.transparentCanvas
         ? "premultiplied"
         : "opaque",
@@ -177,7 +197,7 @@ export default class Aurora {
     return module;
   }
   public static createRenderPipeline(
-    targets: PassTargets,
+    targets: PipelineTargets,
     {
       label,
       shader,
@@ -187,6 +207,9 @@ export default class Aurora {
       depth,
       topology = "triangle-list",
       cullMode = "none",
+      constants = {},
+      vertexEntry = "vertexMain",
+      fragmentEntry = "fragmentMain",
     }: RenderPipelineOptions,
   ) {
     assert(
@@ -194,18 +217,23 @@ export default class Aurora {
       `Pipeline "${label}" has depth options, but its pass writes no depth texture`,
     );
     const module = this.createShader(`${label}Shader`, shader);
+    const values: Record<string, number> = {};
+    for (const name of Object.keys(constants)) {
+      values[name] = Number(constants[name]);
+    }
 
     return this.device.createRenderPipelineAsync({
       label: `${label}Pipeline`,
       layout: SharedBinds.pipelineLayout(`${label}PipelineLayout`, binds),
-      vertex: { module, entryPoint: "vertexMain", buffers },
+      vertex: { module, entryPoint: vertexEntry, buffers, constants: values },
       fragment:
         targets.colors.length === 0
           ? undefined
           : {
               module,
-              entryPoint: "fragmentMain",
+              entryPoint: fragmentEntry,
               targets: targets.colors.map((format) => ({ format, blend })),
+              constants: values,
             },
       depthStencil:
         targets.depth === undefined
@@ -222,6 +250,7 @@ export default class Aurora {
     label,
     shader,
     binds,
+    entry = "computeMain",
   }: ComputePipelineOptions) {
     const module = this.createShader(`${label}Shader`, shader);
     return this.device.createComputePipelineAsync({
@@ -229,7 +258,7 @@ export default class Aurora {
       layout: SharedBinds.pipelineLayout(`${label}PipelineLayout`, binds),
       compute: {
         module,
-        entryPoint: "computeMain",
+        entryPoint: entry,
         constants: { groupSize: this.settings.rendering.computeGroupSize },
       },
     });

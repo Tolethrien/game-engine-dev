@@ -15,6 +15,7 @@ const SHRINK_FRAMES = 300;
 export default class GrowingBuffer {
   private floats: Float32Array;
   private uints: Uint32Array;
+  private bytes: Uint8Array;
   private buffer: GPUBuffer;
   private readonly label: string;
   private readonly stride: number;
@@ -40,6 +41,7 @@ export default class GrowingBuffer {
     const data = new ArrayBuffer(this.capacity * stride * WORD);
     this.floats = new Float32Array(data);
     this.uints = new Uint32Array(data);
+    this.bytes = new Uint8Array(data);
     this.gpuCapacity = this.capacity;
     this.buffer = this.createGPUBuffer();
   }
@@ -55,6 +57,9 @@ export default class GrowingBuffer {
   }
   public get getUints() {
     return this.uints;
+  }
+  public get getBytes() {
+    return this.bytes;
   }
   public get getStride() {
     return this.stride;
@@ -89,6 +94,7 @@ export default class GrowingBuffer {
     const data = new ArrayBuffer(this.capacity * this.stride * WORD);
     this.floats = new Float32Array(data);
     this.uints = new Uint32Array(data);
+    this.bytes = new Uint8Array(data);
   }
 
   public upload() {

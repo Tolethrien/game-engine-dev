@@ -1,22 +1,20 @@
 import Aurora from "../core";
-import { Pass, PassResources } from "../pass";
+import { RenderPass, PassResources } from "../pass";
 
-export default class ClearPass extends Pass<"render"> {
+export default class ClearPass extends RenderPass {
   public readonly name = "clear";
-  public readonly type = "render";
 
   resources(res: PassResources) {
     const color = Aurora.getSettings.rendering.canvasColor;
     const alpha = color[3] / 255;
-    res.write(
+    res.create(
       "scene",
       { size: { scale: 1 }, format: "rgba16float" },
       {
-        loadOp: "clear",
         clearValue: [
-          (color[0] / 255) * alpha,
-          (color[1] / 255) * alpha,
-          (color[2] / 255) * alpha,
+          Aurora.colorChannel(color[0]) * alpha,
+          Aurora.colorChannel(color[1]) * alpha,
+          Aurora.colorChannel(color[2]) * alpha,
           alpha,
         ],
       },

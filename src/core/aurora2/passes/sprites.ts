@@ -1,6 +1,6 @@
 import AssetManager from "../assetManager";
 import Aurora from "../core";
-import { Pass, PassResources, PassTargets } from "../pass";
+import { RenderPass, PassResources, PassTargets } from "../pass";
 import SharedBinds from "../sharedBinds";
 import shader from "../shaders/sprites.wgsl?raw";
 import VertexLayout, {
@@ -13,7 +13,7 @@ import Blend from "../utils/blend";
 const SPRITE_FIELDS = {
   position: "float32x2",
   size: "float32x2",
-  tint: "float32x4",
+  tint: "unorm8x4",
   uvRect: "float32x4",
   layer: "uint32",
 } satisfies VertexFields;
@@ -28,7 +28,7 @@ const SPRITES = [
     y: 40,
     w: 200,
     h: 200,
-    tint: [1, 1, 1, 1],
+    tint: [255, 255, 255, 255],
   },
   {
     texture: "font",
@@ -37,7 +37,7 @@ const SPRITES = [
     y: 40,
     w: 200,
     h: 200,
-    tint: [1, 1, 1, 1],
+    tint: [255, 255, 255, 255],
   },
   {
     texture: "missing",
@@ -46,13 +46,12 @@ const SPRITES = [
     y: 40,
     w: 100,
     h: 100,
-    tint: [1, 0.5, 0, 1],
+    tint: [255, 128, 0, 255],
   },
 ];
 
-export default class SpritesPass extends Pass<"render"> {
+export default class SpritesPass extends RenderPass {
   public readonly name = "sprites";
-  public readonly type = "render";
   declare private pipeline: GPURenderPipeline;
   declare private sprites: GrowingBuffer;
   declare private writer: VertexWriter<typeof SPRITE_FIELDS>;
@@ -63,6 +62,7 @@ export default class SpritesPass extends Pass<"render"> {
       shader,
       buffers: [SPRITE_VERTEX.layout],
       blend: Blend.alpha,
+      constants: { linearColors: Aurora.isLinear },
     });
     this.sprites = new GrowingBuffer({
       label: "spritesInstanceBuffer",
@@ -75,11 +75,7 @@ export default class SpritesPass extends Pass<"render"> {
   resources(res: PassResources) {
     res.readAsset("albedo");
     res.sampler("nearestClamp");
-    res.write(
-      "scene",
-      { size: { scale: 1 }, format: "rgba16float" },
-      { loadOp: "load" },
-    );
+    res.write("scene");
   }
 
   execute(encoder: GPURenderPassEncoder) {

@@ -9,11 +9,40 @@ export class AuroraDevModule implements IAuroraModule {
   private collecting = false;
   private collector = new Collector<AuroraDebugData>();
   private collectingChanged = new Signal<boolean>();
-
+  private gpuErrors: Map<string, number> = new Map();
   public connect(source: () => AuroraDebugData) {
     this.collector.connect(source);
   }
 
+  public watchDevice(device: GPUDevice) {
+    device.lost.then((info) => {
+      if (info.reason === "destroyed") return;
+      console.error(`[Aurora] GPU device lost: ${info.message}`);
+    });
+
+    device.addEventListener("uncapturederror", (event) => {
+      event.preventDefault();
+      const message = event.error.message;
+      const count = this.gpuErrors.get(message) ?? 0;
+      this.gpuErrors.set(message, count + 1);
+      if (count > 0) return;
+      console.error(`[Aurora] WebGPU error (reported once):\n${message}`);
+    });
+  }
+  public watchShader(label: string, module: GPUShaderModule, code: string) {
+    module.getCompilationInfo().then((info) => {
+      if (info.messages.length === 0) return;
+      const lines = code.split("\n");
+      for (const msg of info.messages) {
+        const line = lines[msg.lineNum - 1] ?? "";
+        const caret = " ".repeat(Math.max(0, msg.linePos - 1)) + "^";
+        const text = `[${label}] ${msg.type} at ${msg.lineNum}:${msg.linePos}: ${msg.message}\n${line}\n${caret}`;
+        if (msg.type === "error") console.error(text);
+        else if (msg.type === "warning") console.warn(text);
+        else console.info(text);
+      }
+    });
+  }
   public onCollectingChange(callback: (collecting: boolean) => void) {
     this.collectingChanged.connect(callback);
     callback(this.collecting);
@@ -65,4 +94,6 @@ export const prodAurora: IAuroraModule = {
   connect: () => {},
   onCollectingChange: () => {},
   endFrame: () => {},
+  watchDevice: () => {},
+  watchShader: () => {},
 };

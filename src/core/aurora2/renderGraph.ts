@@ -1,7 +1,14 @@
-import { assert } from "../axiom/utils";
+import { assert } from "@axiom/utils";
 import AssetManager from "./assetManager";
 import Aurora from "./core";
-import { Pass, PassContext, PassResources, PassTargets } from "./pass";
+import {
+  MultiPassContext,
+  Pass,
+  PassContext,
+  PassFormats,
+  PassResources,
+  PassTargets,
+} from "./pass";
 import ResourcePool, {
   TextureDescriptor,
   DEPTH_FORMATS,
@@ -9,8 +16,6 @@ import ResourcePool, {
 } from "./resourcePool";
 import SharedBinds from "./sharedBinds";
 import GpuTimer from "./timer";
-export const ALL_STAGES =
-  GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE;
 
 export default class RenderGraph {
   private static passes: Pass[] = [];
@@ -37,29 +42,54 @@ export default class RenderGraph {
     const passes = this.preset!();
     const resources: Map<Pass, PassResources> = new Map();
     const contexts: Map<Pass, PassContext> = new Map();
-    const targets: Map<Pass, PassTargets> = new Map();
+    const targets: Map<Pass, PassTargets | PassFormats> = new Map();
     const written: Map<string, { desc: TextureDescriptor; pass: string }> =
       new Map();
-
+    const names: Set<string> = new Set();
     for (const pass of passes) {
-      const declared = new PassResources();
+      assert(
+        !names.has(pass.name),
+        `Preset has more than one pass named "${pass.name}", pass names must be unique`,
+      );
+      names.add(pass.name);
+      const declared = new PassResources(pass.name, written);
       pass.resources(declared);
       this.validatePass(pass, declared, written);
       resources.set(pass, declared);
-      contexts.set(pass, new PassContext(declared, this.frameTextures));
+      contexts.set(
+        pass,
+        pass.type === "multi"
+          ? new MultiPassContext(pass.name, declared, this.frameTextures)
+          : new PassContext(declared, this.frameTextures),
+      );
 
       const colors: GPUTextureFormat[] = [];
+      const formats: Map<string, GPUTextureFormat> = new Map();
       let depth: GPUTextureFormat | undefined;
       for (const write of declared.writes) {
+        formats.set(write.name, write.desc.format);
         if (DEPTH_FORMATS.has(write.desc.format)) depth = write.desc.format;
         else colors.push(write.desc.format);
       }
       for (const name of declared.modifies) {
-        colors.push(written.get(name)!.desc.format);
+        const format = written.get(name)!.desc.format;
+        formats.set(name, format);
+        colors.push(format);
       }
-      if (declared.canvas)
-        colors.push(navigator.gpu.getPreferredCanvasFormat());
-      targets.set(pass, { colors, depth });
+      for (const name of declared.reads) {
+        formats.set(name, written.get(name)!.desc.format);
+      }
+      for (const temp of declared.temps) {
+        formats.set(temp.name, temp.desc.format);
+      }
+      if (declared.canvas) {
+        formats.set("canvas", Aurora.getCanvasFormat);
+        colors.push(Aurora.getCanvasFormat);
+      }
+      targets.set(
+        pass,
+        pass.type === "render" ? { colors, depth, formats } : { formats },
+      );
     }
 
     await Promise.all(passes.map((pass) => pass.setup(targets.get(pass)!)));
@@ -109,10 +139,12 @@ export default class RenderGraph {
 
     for (let index = 0; index < this.activePasses.length; index++) {
       const pass = this.activePasses[index];
-      const isLast = index === this.activePasses.length - 1;
+      GpuTimer.beginPass(pass.name);
 
-      if (pass.type === "compute") this.executeCompute(encoder, pass, isLast);
-      else this.executeRender(encoder, pass, isLast, canvasView);
+      if (pass.type === "compute") this.executeCompute(encoder, pass);
+      else if (pass.type === "multi")
+        this.executeMulti(encoder, pass, canvasView);
+      else this.executeRender(encoder, pass, canvasView);
 
       this.lastUse.forEach((last, name) => {
         if (last !== index) return;
@@ -145,6 +177,9 @@ export default class RenderGraph {
         if (!this.frameWritten.has(name)) missingInput = true;
       for (const name of declared.modifies)
         if (!this.frameWritten.has(name)) missingInput = true;
+      for (const write of declared.writes)
+        if (write.loadOp === "load" && !this.frameWritten.has(write.name))
+          missingInput = true;
       if (missingInput) continue;
 
       const index = this.activePasses.length;
@@ -187,83 +222,41 @@ export default class RenderGraph {
     });
   }
 
-  private static executeCompute(
-    encoder: GPUCommandEncoder,
-    pass: Pass,
-    isLast: boolean,
-  ) {
+  private static executeCompute(encoder: GPUCommandEncoder, pass: Pass) {
     const declared = this.resources.get(pass)!;
     const ctx = this.contexts.get(pass)!;
     ctx.clearOutputs();
 
     for (const write of declared.writes) {
-      let texture = this.frameTextures.get(write.name);
-      if (!texture) {
-        texture = ResourcePool.acquire(write.desc);
-        this.frameTextures.set(write.name, texture);
-        this.frameDescs.set(write.name, write.desc);
-      }
-      if (write.loadOp === "clear") {
-        const label = `${pass.name}:clear:${write.name}`;
-        const clearPass = encoder.beginRenderPass({
-          label,
-          colorAttachments: [
-            {
-              view: ResourcePool.view(texture),
-              loadOp: "clear",
-              clearValue: write.clearValue,
-              storeOp: "store",
-            },
-          ],
-          timestampWrites: GpuTimer.passWrites(label, false),
-        });
-        clearPass.end();
+      const texture = this.frameTexture(write.name, write.desc);
+      if (write.clear) {
+        this.clearMips(
+          encoder,
+          `${pass.name}:clear:${write.name}`,
+          texture,
+          0,
+          write.clearValue,
+        );
       }
       ctx.setOutput(write.name, texture);
     }
 
-    const newVersions: [string, GPUTexture][] = [];
-    for (const name of declared.modifies) {
-      assert(
-        this.frameTextures.has(name),
-        `Pass "${pass.name}" modifies "${name}" but nothing wrote it this frame`,
-      );
-      const output = ResourcePool.acquire(this.frameDescs.get(name)!);
-      const label = `${pass.name}:clear:${name}`;
-      const clearPass = encoder.beginRenderPass({
-        label,
-        colorAttachments: [
-          {
-            view: ResourcePool.view(output),
-            loadOp: "clear",
-            storeOp: "store",
-          },
-        ],
-        timestampWrites: GpuTimer.passWrites(label, false),
-      });
-      clearPass.end();
-      ctx.setOutput(name, output);
-      newVersions.push([name, output]);
-    }
+    const newVersions = this.newVersions(encoder, pass, declared, ctx, 0);
 
     const computePass = encoder.beginComputePass({
       label: pass.name,
-      timestampWrites: GpuTimer.passWrites(pass.name, isLast),
+      timestampWrites: GpuTimer.stepWrites(),
     });
     computePass.setBindGroup(0, SharedBinds.getFrame);
     computePass.setBindGroup(1, SharedBinds.getAssets(declared.samplerName));
     pass.execute(computePass, ctx);
     computePass.end();
 
-    for (const [name, output] of newVersions) {
-      ResourcePool.release(this.frameTextures.get(name)!);
-      this.frameTextures.set(name, output);
-    }
+    this.swapVersions(newVersions);
   }
   private static executeRender(
     encoder: GPUCommandEncoder,
     pass: Pass,
-    isLast: boolean,
     canvasView: GPUTextureView,
   ) {
     const declared = this.resources.get(pass)!;
@@ -272,12 +265,7 @@ export default class RenderGraph {
     let depthStencilAttachment: GPURenderPassDepthStencilAttachment | undefined;
 
     for (const write of declared.writes) {
-      let texture = this.frameTextures.get(write.name);
-      if (!texture) {
-        texture = ResourcePool.acquire(write.desc);
-        this.frameTextures.set(write.name, texture);
-        this.frameDescs.set(write.name, write.desc);
-      }
+      const texture = this.frameTexture(write.name, write.desc);
 
       if (DEPTH_FORMATS.has(write.desc.format)) {
         assert(
@@ -285,7 +273,7 @@ export default class RenderGraph {
           `Pass "${pass.name}" writes more than one depth texture`,
         );
         depthStencilAttachment = {
-          view: ResourcePool.view(texture),
+          view: ResourcePool.view(texture, 0),
           depthLoadOp: write.loadOp,
           depthClearValue: write.depthClearValue ?? 1,
           depthStoreOp: "store",
@@ -297,27 +285,30 @@ export default class RenderGraph {
         continue;
       }
 
+      if (write.clear) {
+        this.clearMips(
+          encoder,
+          `${pass.name}:clear:${write.name}`,
+          texture,
+          1,
+          write.clearValue,
+        );
+      }
       colorAttachments.push({
-        view: ResourcePool.view(texture),
+        view: ResourcePool.view(texture, 0),
         loadOp: write.loadOp,
         clearValue: write.clearValue,
         storeOp: "store",
       });
     }
 
-    const newVersions: [string, GPUTexture][] = [];
-    for (const name of declared.modifies) {
-      assert(
-        this.frameTextures.has(name),
-        `Pass "${pass.name}" modifies "${name}" but nothing wrote it this frame`,
-      );
-      const output = ResourcePool.acquire(this.frameDescs.get(name)!);
+    const newVersions = this.newVersions(encoder, pass, declared, ctx, 1);
+    for (const [, output] of newVersions) {
       colorAttachments.push({
-        view: ResourcePool.view(output),
+        view: ResourcePool.view(output, 0),
         loadOp: "clear",
         storeOp: "store",
       });
-      newVersions.push([name, output]);
     }
 
     if (declared.canvas) {
@@ -333,18 +324,93 @@ export default class RenderGraph {
       label: pass.name,
       colorAttachments,
       depthStencilAttachment,
-      timestampWrites: GpuTimer.passWrites(pass.name, isLast),
+      timestampWrites: GpuTimer.stepWrites(),
     });
     renderPass.setBindGroup(0, SharedBinds.getFrame);
     renderPass.setBindGroup(1, SharedBinds.getAssets(declared.samplerName));
     pass.execute(renderPass, ctx);
     renderPass.end();
 
+    this.swapVersions(newVersions);
+  }
+  private static executeMulti(
+    encoder: GPUCommandEncoder,
+    pass: Pass,
+    canvasView: GPUTextureView,
+  ) {
+    const declared = this.resources.get(pass)!;
+    const ctx = this.contexts.get(pass)! as MultiPassContext;
+    ctx.clearOutputs();
+
+    for (const write of declared.writes) {
+      const texture = this.frameTexture(write.name, write.desc);
+      if (write.clear) {
+        this.clearTexture(
+          encoder,
+          `${pass.name}:clear:${write.name}`,
+          texture,
+          write.clearValue,
+          write.depthClearValue,
+        );
+      }
+      ctx.setOutput(write.name, texture);
+    }
+
+    const newVersions = this.newVersions(encoder, pass, declared, ctx, 0);
+
+    for (const temp of declared.temps) {
+      const texture = ResourcePool.acquire(temp.desc);
+      if (temp.clear) {
+        this.clearTexture(encoder, `${pass.name}:clear:${temp.name}`, texture);
+      }
+      ctx.setTemp(temp.name, texture);
+    }
+
+    ctx.beginFrame(encoder, canvasView);
+    pass.execute(encoder, ctx);
+    ctx.releaseTemps();
+
+    this.swapVersions(newVersions);
+  }
+
+  private static frameTexture(name: string, desc: TextureDescriptor) {
+    let texture = this.frameTextures.get(name);
+    if (!texture) {
+      texture = ResourcePool.acquire(desc);
+      this.frameTextures.set(name, texture);
+      this.frameDescs.set(name, desc);
+    }
+    return texture;
+  }
+  private static newVersions(
+    encoder: GPUCommandEncoder,
+    pass: Pass,
+    declared: PassResources,
+    ctx: PassContext,
+    fromMip: number,
+  ) {
+    const newVersions: [string, GPUTexture][] = [];
+    for (const name of declared.modifies) {
+      assert(
+        this.frameTextures.has(name),
+        `Pass "${pass.name}" modifies "${name}" but nothing wrote it this frame`,
+      );
+      const output = ResourcePool.acquire(this.frameDescs.get(name)!);
+      if (!declared.unclearedModifies.has(name)) {
+        this.clearMips(encoder, `${pass.name}:clear:${name}`, output, fromMip);
+      }
+      ctx.setOutput(name, output);
+      newVersions.push([name, output]);
+    }
+    return newVersions;
+  }
+  private static swapVersions(newVersions: [string, GPUTexture][]) {
     for (const [name, output] of newVersions) {
       ResourcePool.release(this.frameTextures.get(name)!);
       this.frameTextures.set(name, output);
     }
   }
+
   private static validatePass(
     pass: Pass,
     declared: PassResources,
@@ -353,7 +419,7 @@ export default class RenderGraph {
     for (const name of declared.reads) {
       assert(
         written.has(name),
-        `Pass "${pass.name}" reads "${name}", but no earlier pass in preset writes it`,
+        `Pass "${pass.name}" reads "${name}", but no earlier pass in preset creates it`,
       );
     }
     for (const name of declared.assets) {
@@ -365,7 +431,7 @@ export default class RenderGraph {
     for (const name of declared.modifies) {
       assert(
         written.has(name),
-        `Pass "${pass.name}" modifies "${name}", but no earlier pass in preset writes it`,
+        `Pass "${pass.name}" modifies "${name}", but no earlier pass in preset creates it`,
       );
       assert(
         !DEPTH_FORMATS.has(written.get(name)!.desc.format),
@@ -373,6 +439,15 @@ export default class RenderGraph {
       );
     }
     for (const write of declared.writes) {
+      assert(
+        !declared.reads.includes(write.name) &&
+          !declared.modifies.includes(write.name),
+        `Pass "${pass.name}" writes "${write.name}" and also reads or modifies it, use only modify() to read and write the same texture`,
+      );
+      assert(
+        !DEPTH_FORMATS.has(write.desc.format) || (write.desc.mips ?? 1) === 1,
+        `Pass "${pass.name}" writes depth texture "${write.name}" with mips, which is not supported`,
+      );
       const first = written.get(write.name);
       if (!first) {
         written.set(write.name, { desc: write.desc, pass: pass.name });
@@ -381,6 +456,39 @@ export default class RenderGraph {
       assert(
         this.sameDescriptor(first.desc, write.desc),
         `Pass "${pass.name}" writes "${write.name}" with a different descriptor than "${first.pass}"`,
+      );
+    }
+
+    assert(
+      declared.temps.length === 0 || pass.type === "multi",
+      `Pass "${pass.name}" declares temp textures, which are only available in MultiPass`,
+    );
+    const tempNames: Set<string> = new Set();
+    for (const temp of declared.temps) {
+      assert(
+        !tempNames.has(temp.name),
+        `Pass "${pass.name}" declares temp "${temp.name}" more than once`,
+      );
+      tempNames.add(temp.name);
+      assert(
+        temp.name !== "canvas" &&
+          !declared.reads.includes(temp.name) &&
+          !declared.modifies.includes(temp.name) &&
+          !declared.writes.some((write) => write.name === temp.name),
+        `Pass "${pass.name}" declares temp "${temp.name}" with a name already used in this pass`,
+      );
+      assert(
+        !DEPTH_FORMATS.has(temp.desc.format) || (temp.desc.mips ?? 1) === 1,
+        `Pass "${pass.name}" declares depth temp "${temp.name}" with mips, which is not supported`,
+      );
+    }
+
+    if (pass.type === "render") {
+      assert(
+        declared.writes.length > 0 ||
+          declared.modifies.length > 0 ||
+          declared.canvas !== null,
+        `Render pass "${pass.name}" has no targets, declare write(), modify() or writeCanvas() in resources()`,
       );
     }
     if (pass.type === "compute") {
@@ -417,5 +525,60 @@ export default class RenderGraph {
       return a.size.width === b.size.width && a.size.height === b.size.height;
     }
     return false;
+  }
+  private static clearTexture(
+    encoder: GPUCommandEncoder,
+    label: string,
+    texture: GPUTexture,
+    clearValue?: GPUColor,
+    depthClearValue?: number,
+  ) {
+    if (!DEPTH_FORMATS.has(texture.format)) {
+      this.clearMips(encoder, label, texture, 0, clearValue);
+      return;
+    }
+    const depthStencilAttachment: GPURenderPassDepthStencilAttachment = {
+      view: ResourcePool.view(texture, 0),
+      depthLoadOp: "clear",
+      depthClearValue: depthClearValue ?? 1,
+      depthStoreOp: "store",
+    };
+    if (texture.format.includes("stencil")) {
+      depthStencilAttachment.stencilLoadOp = "clear";
+      depthStencilAttachment.stencilStoreOp = "store";
+    }
+    encoder
+      .beginRenderPass({
+        label,
+        colorAttachments: [],
+        depthStencilAttachment,
+        timestampWrites: GpuTimer.stepWrites(),
+      })
+      .end();
+  }
+  private static clearMips(
+    encoder: GPUCommandEncoder,
+    label: string,
+    texture: GPUTexture,
+    fromMip: number,
+    clearValue?: GPUColor,
+  ) {
+    for (let mip = fromMip; mip < texture.mipLevelCount; mip++) {
+      const mipLabel = `${label}:mip${mip}`;
+      encoder
+        .beginRenderPass({
+          label: mipLabel,
+          colorAttachments: [
+            {
+              view: ResourcePool.view(texture, mip),
+              loadOp: "clear",
+              clearValue,
+              storeOp: "store",
+            },
+          ],
+          timestampWrites: GpuTimer.stepWrites(),
+        })
+        .end();
+    }
   }
 }

@@ -1,6 +1,6 @@
-import { assert } from "../axiom/utils";
+import { assert } from "@axiom/utils";
 import Aurora from "./core";
-import { ALL_STAGES } from "./renderGraph";
+import { ALL_STAGES } from "./sharedBinds";
 
 type PassBindEntry = {
   binding: number;
@@ -28,7 +28,7 @@ type BindResource<E extends PassBindEntry> = E["type"] extends
   : E["type"] extends "sampler"
     ? GPUSampler
     : GPUBuffer;
-export type PassBindResources<T extends PassBindEntries> = {
+type PassBindResources<T extends PassBindEntries> = {
   [K in keyof T]: BindResource<T[K]>;
 };
 type BindResourceValue = GPUTextureView | GPUBuffer | GPUSampler;
