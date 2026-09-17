@@ -15,6 +15,13 @@ struct Camera {
 const SHAPE_BOX: u32 = 0u;
 const SHAPE_ELLIPSE: u32 = 1u;
 const SHAPE_QUAD: u32 = 2u;
+// box that takes its coverage from the font array
+const SHAPE_GLYPH: u32 = 3u;
+// only the outline ring of a glyph, drawn before the fills of its text
+const SHAPE_GLYPH_OUTLINE: u32 = 4u;
+// glyph of an mtsdf atlas: distances in all four channels
+const SHAPE_MTSDF: u32 = 5u;
+const SHAPE_MTSDF_OUTLINE: u32 = 6u;
 struct SortParams {
   // per axis: x, y, z
   origin: vec3f,
@@ -31,7 +38,10 @@ struct SortParams {
 @group(0) @binding(1) var<uniform> camera: Camera;
 @group(1) @binding(0) var albedo: texture_2d_array<f32>;
 @group(1) @binding(3) var uiAtlas: texture_2d_array<f32>;
+@group(1) @binding(4) var fonts: texture_2d_array<f32>;
 @group(1) @binding(5) var texSampler: sampler;
+@group(1) @binding(6) var fontNearest: sampler;
+@group(1) @binding(7) var fontLinear: sampler;
 @group(2) @binding(0) var<uniform> sortParams: SortParams;
 override linearColors: bool = true;
 override depthSort: bool = false;
@@ -244,6 +254,8 @@ struct MaterialInput {
   ring: f32,
   // signed distance to the outer edge, negative inside, uv units on quads
   dist: f32,
+  // how far dist stays true: the reach of the distance field of a glyph in pixels
+  reach: f32,
   params: vec4f,
 };
 
@@ -251,6 +263,10 @@ struct MaterialInput {
 
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
+  let maskGlyph = in.shape == SHAPE_GLYPH || in.shape == SHAPE_GLYPH_OUTLINE;
+  let msdfGlyph = in.shape == SHAPE_MTSDF || in.shape == SHAPE_MTSDF_OUTLINE;
+  let glyph = maskGlyph || msdfGlyph;
+  let glyphOutline = in.shape == SHAPE_GLYPH_OUTLINE || in.shape == SHAPE_MTSDF_OUTLINE;
   var uv01: vec2f;
   var local = in.local;
   var dist: f32;
@@ -267,7 +283,8 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
     if (in.shape == SHAPE_ELLIPSE) {
       dist = ellipse(in.local, in.halfSize);
     } else {
-      dist = roundedBox(in.local, in.halfSize, in.radius);
+      // glyphs keep their reach in radius, their quad has square corners
+      dist = roundedBox(in.local, in.halfSize, select(in.radius, vec4f(0.0), glyph));
     }
   }
 
@@ -275,16 +292,51 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
   // textures have no mips, so the level sample works inside a branch
   let layer = in.layer & ~UI_ATLAS;
   var sampled: vec4f;
-  if ((in.layer & UI_ATLAS) != 0u) {
+  var glyphDist = 0.0;
+  var glyphCoverage = 0.0;
+  var pixelsPerGlyphTexel = 0.0;
+  if (glyph) {
+    // glyphs may touch their cell edge, half a texel inset keeps the
+    // edge sample from picking the neighbouring cell in the atlas
+    let atlasSize = vec2f(textureDimensions(fonts, 0).xy);
+    let halfTexel = 0.5 / atlasSize;
+    let glyphUv = clamp(uv, in.uvRect.xy + halfTexel, in.uvRect.xy + in.uvRect.zw - halfTexel);
+    pixelsPerGlyphTexel = in.halfSize.x * 2.0 / (in.uvRect.z * atlasSize.x);
+    // radius carries how many texels the distance field of this glyph reaches
+    let reach = in.radius.x * pixelsPerGlyphTexel;
+    if (msdfGlyph) {
+      let data = textureSampleLevel(fonts, fontLinear, glyphUv, in.layer, 0.0);
+      let median = max(min(data.r, data.g), min(max(data.r, data.g), data.b));
+      let sharp = (0.5 - median) * 2.0 * reach;
+      let soft = (0.5 - data.a) * 2.0 * reach;
+      // the median keeps corners sharp near the edge, the plain field in alpha
+      // is the honest distance further out, where outlines and glows live
+      glyphDist = mix(sharp, soft, smoothstep(0.3, 0.8, abs(soft) / reach));
+    } else {
+      // alpha is coverage, red the distance: 0.5 on the edge, the reach to 0 and 1
+      glyphCoverage = textureSampleLevel(fonts, fontNearest, glyphUv, in.layer, 0.0).a;
+      let field = textureSampleLevel(fonts, fontLinear, glyphUv, in.layer, 0.0).r;
+      glyphDist = (0.5 - field) * 2.0 * reach;
+    }
+    sampled = vec4f(1.0);
+  } else if ((in.layer & UI_ATLAS) != 0u) {
     // ui array is plain rgba8unorm, unlike the srgb albedo it needs decoding here
     sampled = inputColor(textureSampleLevel(uiAtlas, texSampler, uv, layer, 0.0));
   } else {
     sampled = textureSampleLevel(albedo, texSampler, uv, layer, 0.0);
   }
-  let texel = premultiply(sampled);
+  var texel = premultiply(sampled);
   let aa = max(fwidth(dist), 0.0001);
   let shape = clamp(0.5 - dist / aa, 0.0, 1.0);
   let fill = clamp(0.5 - (dist + in.outlineWidth) / aa, 0.0, 1.0);
+  // derivatives must stay outside branches
+  let glyphAa = max(fwidth(glyphDist), 0.0001);
+  if (glyph) {
+    // mtsdf has no coverage channel, it comes from the distance
+    let covered = select(glyphCoverage, clamp(0.5 - glyphDist / glyphAa, 0.0, 1.0), msdfGlyph);
+    // the outline layer paints no fill, the fill of the text comes later on top
+    texel = vec4f(select(covered, 0.0, glyphOutline));
+  }
 
   var input: MaterialInput;
   input.uv = uv01;
@@ -295,6 +347,24 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
   input.texel = texel;
   input.ring = (shape - fill) / max(shape, 0.0001);
   input.dist = dist;
+  // shapes are true distances everywhere, glyphs only inside their field
+  input.reach = max(in.halfSize.x, in.halfSize.y);
+  if (glyph) {
+    // text outlines grow outwards, the letter itself stays untouched
+    // the ring starts at the letter edge, so it never covers the fill
+    let outer = clamp(0.5 - (glyphDist - in.outlineWidth) / glyphAa, 0.0, 1.0);
+    let inner = clamp(0.5 - glyphDist / glyphAa, 0.0, 1.0);
+    input.ring = select(0.0, outer - inner, glyphOutline);
+    input.dist = glyphDist;
+    input.reach = in.radius.x * pixelsPerGlyphTexel;
+    // where this letter sits in its text: radius.yz is the corner, radius.w the
+    // size, two 12 bit values in one float (see the packing note in todo.md).
+    // A letter spanning its own uv carries 0, 0 and a size of one.
+    let packed = in.radius.w;
+    let packedHeight = floor(packed / 4096.0);
+    let uvSize = vec2f(packed - packedHeight * 4096.0, packedHeight) / 4095.0;
+    input.uv = in.radius.yz + uv01 * uvSize;
+  }
   input.params = in.params;
   let color = material(input);
 

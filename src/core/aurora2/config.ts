@@ -1,8 +1,16 @@
 import { TextureSource, UISource } from "./assetManager";
+import { FontSource } from "./text/font";
 
 export type RenderRes = "1920x1080" | "1280x720" | "854x480" | "640x360";
 export type Profiler = "none" | "minimal" | "normal" | "extended";
 export type ColorSpace = "linear" | "gamma";
+/** pages for glyphs of dynamic fonts, allocated once in config, they do not grow yet */
+export interface FontAtlasConfig {
+  pageSize: number;
+  pages: number;
+  /** pixels the outline distance field reaches around every glyph, the widest outline at native size */
+  spread: number;
+}
 
 export interface AuroraConfig {
   rendering: {
@@ -16,6 +24,8 @@ export interface AuroraConfig {
   };
   userTextures: TextureSource[];
   userUI: UISource[];
+  fonts: FontSource[];
+  fontAtlas: FontAtlasConfig;
   debugger: Profiler;
 }
 export type ChangeableRenderConfig = {
@@ -33,5 +43,7 @@ export const BASE_CONFIG: AuroraConfig = {
   },
   userTextures: [],
   userUI: [],
+  fonts: [],
+  fontAtlas: { pageSize: 1024, pages: 4, spread: 8 },
   debugger: "minimal",
 };

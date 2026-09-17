@@ -2,7 +2,19 @@ import Engine from "@engine/engine";
 import FPSOverlay from "@engine/fpsOverlay";
 import Aurora from "@/core/aurora2/core";
 import land from "@sandbox/assets/land.png";
+import testGrid from "@sandbox/assets/fonts/testGrid/testGrid.png";
+import latoRegular from "@sandbox/assets/fonts/lato/Lato-Regular.ttf";
+import latoBold from "@sandbox/assets/fonts/lato/Lato-Bold.ttf";
+import latoItalic from "@sandbox/assets/fonts/lato/Lato-Italic.ttf";
+import medievalSharp from "@sandbox/assets/fonts/medievalSharp/MedievalSharp-Regular.ttf";
+import blackOps from "@sandbox/assets/fonts/blackOpsOne/BlackOpsOne-Regular.ttf";
+import latoSdfImage from "@sandbox/assets/fonts/lato/Lato-Regular.mtsdf.png";
+import latoSdfJson from "@sandbox/assets/fonts/lato/Lato-Regular.mtsdf.json";
+import blackOpsSdfImage from "@sandbox/assets/fonts/blackOpsOne/BlackOpsOne-Regular.mtsdf.png";
+import blackOpsSdfJson from "@sandbox/assets/fonts/blackOpsOne/BlackOpsOne-Regular.mtsdf.json";
 import { Draw, DrawGui } from "@/core/aurora2/urp/draw";
+import TextBox from "@/core/aurora2/text/textBox";
+import TextLayout from "@/core/aurora2/text/textLayout";
 import Time from "@/core/engine/time";
 import URP, { SortMode, URPSortConfig } from "@/core/aurora2/urp/urp";
 import Material from "@/core/aurora2/material";
@@ -14,6 +26,8 @@ import laserPulse from "@/core/aurora2/urp/shaders/materials/laserPulse.wgsl?raw
 import laserPlasma from "@/core/aurora2/urp/shaders/materials/laserPlasma.wgsl?raw";
 import laserTracer from "@/core/aurora2/urp/shaders/materials/laserTracer.wgsl?raw";
 import glowOrb from "@/core/aurora2/urp/shaders/materials/glowOrb.wgsl?raw";
+import textRainbow from "@/core/aurora2/urp/shaders/materials/textRainbow.wgsl?raw";
+import textGlow from "@/core/aurora2/urp/shaders/materials/textGlow.wgsl?raw";
 import InputManager from "@/core/engine/inputManager";
 import { KEY } from "@/core/engine/keys";
 
@@ -42,6 +56,15 @@ const GLOW_ORB = Material.create({
   name: "glowOrb",
   blend: "additive",
   fragment: glowOrb,
+});
+const TEXT_GLOW = Material.create({
+  name: "textGlow",
+  fragment: textGlow,
+  transparent: true,
+});
+const TEXT_RAINBOW = Material.create({
+  name: "textRainbow",
+  fragment: textRainbow,
 });
 
 const FAN_COLORS: RGBA[] = [
@@ -124,6 +147,33 @@ async function preload() {
 
     userTextures: [{ name: "land", albedo: land }],
     userUI: [{ name: "landUI", url: land }],
+    fonts: [
+      {
+        name: "testGrid",
+        type: "grid",
+        url: testGrid,
+        cell: GRID_CELL,
+        chars: GRID_CHARS,
+        baseline: 25,
+      },
+      { name: "lato", type: "dynamic", url: latoRegular },
+      { name: "latoBold", type: "dynamic", url: latoBold },
+      { name: "latoItalic", type: "dynamic", url: latoItalic },
+      { name: "medieval", type: "dynamic", url: medievalSharp },
+      { name: "blackOps", type: "dynamic", url: blackOps },
+      {
+        name: "latoSdf",
+        type: "mtsdf",
+        url: latoSdfImage,
+        json: latoSdfJson,
+      },
+      {
+        name: "blackOpsSdf",
+        type: "mtsdf",
+        url: blackOpsSdfImage,
+        json: blackOpsSdfJson,
+      },
+    ],
   });
 
   await URP.init({ sort: SORT_CONFIG });
@@ -141,11 +191,627 @@ function update() {
   Draw.beginFrame();
   DrawGui.beginFrame();
   const t = Time.getTimeInSeconds();
-  pilarsTest(t);
-  lasersTest(t);
-  sortTest(t);
-  quadTest(t);
-  guiTest(t);
+  // pilarsTest(t);
+  // lasersTest(t);
+  // sortTest(t);
+  // quadTest(t);
+  // guiTest(t);
+  textShowcase(t);
+}
+
+//=============================== text showcase
+// world: six cards in a 3x2 grid, each shows one part of the text system
+// gui: a panel on the right side of the canvas with dynamic fonts
+
+// testGrid.png is 16 columns of 16x30 cells, ascii 32..126 then polish letters
+const GRID_CHARS =
+  Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join("") +
+  "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ";
+const GRID_CELL = { width: 16, height: 30 };
+
+const CARD = { width: 400, height: 500, gap: 24, left: 30, top: 30 };
+const CARD_BACKGROUND: RGBA = [24, 26, 36, 255];
+const CARD_BORDER: RGBA = [62, 66, 90, 255];
+const MUTED: RGBA = [140, 146, 170, 255];
+const GUIDE: RGBA = [255, 90, 90, 150];
+
+const QUEST_TEXT =
+  "The old lighthouse keeper asks you to bring back the lantern oil " +
+  "stolen by smugglers hiding in the caves north of the harbour.";
+
+const ALIGN_BOXES = (["start", "center", "end"] as const).map(
+  (align) =>
+    new TextBox({
+      font: "lato",
+      size: 18,
+      width: 360,
+      align,
+      text: `align ${align}`,
+    }),
+);
+const JUSTIFY_BOX = new TextBox({
+  font: "lato",
+  size: 16,
+  align: "justify",
+  lineGap: 3,
+  text: QUEST_TEXT,
+});
+const CENTER_WRAP_BOX = new TextBox({
+  font: "lato",
+  size: 16,
+  width: 360,
+  align: "center",
+  lineGap: 3,
+  text: "Centered lines wrap on words and every line is centered on its own",
+});
+const JUSTIFY_FIXED_BOX = new TextBox({
+  font: "lato",
+  size: 16,
+  width: 360,
+  align: "justify",
+  justifyLast: "center",
+  lineGap: 3,
+  text: QUEST_TEXT,
+});
+const ELLIPSIS_BOX = new TextBox({
+  font: "lato",
+  size: 17,
+  width: 360,
+  height: 44,
+  lineGap: 2,
+  overflow: "ellipsis",
+  text: QUEST_TEXT,
+});
+const ITEM_BOX = new TextBox({
+  font: "latoBold",
+  size: 18,
+  width: 360,
+  overflow: "ellipsis",
+  wrap: false,
+  text: "Ancient Lantern of the Drowned Lighthouse Keeper",
+});
+const TAVERN_NAMES = [
+  "Inn",
+  "The Rusty Anchor",
+  "The Rusty Anchor Tavern and Stables of the North Road",
+];
+const SIGN_WRAP_BOX = new TextBox({
+  font: "medieval",
+  size: 34,
+  width: 360,
+  height: 50,
+  align: "center",
+  alignCross: "center",
+  overflow: "fit",
+});
+const SIGN_LINE_BOX = new TextBox({
+  font: "medieval",
+  size: 34,
+  width: 360,
+  height: 50,
+  align: "center",
+  alignCross: "center",
+  overflow: "fit",
+  wrap: false,
+});
+const COLUMN_BOX = new TextBox({
+  font: "latoBold",
+  size: 20,
+  direction: "col",
+  height: 190,
+  lineGap: 8,
+  text: "SCROLL OF THE EAST",
+});
+const LOG_BOX = new TextBox({
+  font: "lato",
+  size: 15,
+  width: 360,
+  height: 150,
+  lineGap: 2,
+  alignCross: "end",
+  overflow: "tail",
+});
+const LOG_EVENTS = [
+  "You picked up 12 gold",
+  "Smuggler hits you for 7",
+  "You cast Firebolt",
+  "Smuggler is burning",
+  "Door unlocked",
+  "Quest updated: Lantern Oil",
+];
+
+const PANEL_WIDTH = 480;
+const PANEL_PARAGRAPH = new TextBox({
+  font: "lato",
+  size: 15,
+  width: PANEL_WIDTH - 40,
+  align: "justify",
+  lineGap: 3,
+  text:
+    "Glyphs of dynamic fonts are drawn by the browser the first time they " +
+    "are used and copied into the atlas. Every whole pixel size has its own " +
+    "glyphs, so small interface text stays as sharp as system text.",
+});
+const PANEL_BUTTON = new TextBox({
+  font: "blackOps",
+  size: 22,
+  width: 200,
+  height: 44,
+  align: "center",
+  alignCross: "center",
+  text: "START",
+});
+const PANEL_TITLE = new TextBox({
+  font: "blackOps",
+  size: 34,
+  width: PANEL_WIDTH - 40,
+  height: 40,
+  alignCross: "center",
+  overflow: "fit",
+  wrap: false,
+});
+
+function textShowcase(t: number) {
+  const cards: [string, string, (x: number, y: number) => void][] = [
+    ["Font types", "bitmap, raster and mtsdf", (x, y) => fontsCard(x, y, t)],
+    ["Alignment", "TextBox align and justify", (x, y) => alignCard(x, y, t)],
+    ["Overflow", "ellipsis and fit", (x, y) => overflowCard(x, y, t)],
+    ["Sorting", "one sort point per text", (x, y) => sortingCard(x, y, t)],
+    ["Materials", "custom shader and alpha", materialCard],
+    [
+      "Columns and log",
+      "col direction, tail overflow",
+      (x, y) => logCard(x, y, t),
+    ],
+  ];
+  cards.forEach(([title, subtitle, content], i) => {
+    const x = CARD.left + (i % 3) * (CARD.width + CARD.gap);
+    const y = CARD.top + Math.floor(i / 3) * (CARD.height + CARD.gap);
+    card(x, y, title, subtitle);
+    content(x + 20, y + 76);
+  });
+  guiPanel(t);
+}
+
+function card(x: number, y: number, title: string, subtitle: string) {
+  // sorts by its top edge, so everything drawn inside stays in front of it
+  Draw.rect({
+    position: { x, y, z: 0 },
+    size: { width: CARD.width, height: CARD.height },
+    color: CARD_BACKGROUND,
+    outline: { width: 2, color: CARD_BORDER },
+    rounded: 14,
+    sort: { x: x + CARD.width / 2, y, z: 0 },
+  });
+  Draw.text({
+    position: { x: x + 20, y: y + 16, z: 0 },
+    font: "latoBold",
+    text: title,
+    size: 24,
+  });
+  Draw.text({
+    position: { x: x + 20, y: y + 46, z: 0 },
+    font: "lato",
+    text: subtitle,
+    size: 15,
+    color: MUTED,
+  });
+}
+
+function label(x: number, y: number, text: string) {
+  Draw.text({
+    position: { x, y, z: 0 },
+    font: "lato",
+    text,
+    size: 13,
+    color: MUTED,
+  });
+}
+
+function frame(box: TextBox, x: number, y: number) {
+  Draw.rect({
+    position: { x, y, z: 0 },
+    size: box.getSize,
+    color: COLOR.TRANSPARENT,
+    outline: { width: 1, color: GUIDE },
+  });
+}
+
+function fontsCard(x: number, y: number, t: number) {
+  const samples: [string, string, RGBA][] = [
+    ["testGrid", "bitmap png, 1:1", COLOR.GOLD],
+    ["lato", "ttf rasterized per size", COLOR.WHITE],
+    ["latoSdf", "mtsdf, any size", COLOR.SKY_BLUE],
+  ];
+  let row = y;
+  for (const [font, note, color] of samples) {
+    label(x, row, note);
+    Draw.text({
+      position: { x, y: row + 16, z: 0 },
+      font,
+      text: "Zażółć gęślą 30",
+      size: 30,
+      color,
+    });
+    row += 62;
+  }
+
+  label(x, row, "mtsdf with the glow material");
+  Draw.text({
+    position: { x, y: row + 18, z: 0 },
+    font: "latoSdf",
+    text: "Neon",
+    size: 54,
+    color: COLOR.HOT_PINK,
+    material: TEXT_GLOW,
+    params: [7, 0.5, 0.6, 0],
+  });
+  row += 84;
+
+  // the whole usable range, from unreadable to huge: mtsdf scales smoothly and
+  // keeps its edge, the outline grows with the text
+  const size = 4 + ((Math.sin(t * 0.5) + 1) / 2) * 106;
+  label(x, row, `mtsdf from 4 to 110 px, now ${size.toFixed(1)} px`);
+  Draw.text({
+    position: { x, y: row + 18, z: 0 },
+    font: "blackOpsSdf",
+    text: "Aa",
+    size,
+    color: COLOR.GOLD,
+    outline: { width: Math.max(1, size * 0.05), color: COLOR.BLACK },
+  });
+  // the same sizes in the raster font, for comparison
+  Draw.text({
+    position: { x: x + 150, y: row + 18, z: 0 },
+    font: "blackOps",
+    text: "Aa",
+    size,
+    color: COLOR.SKY_BLUE,
+  });
+}
+
+function alignCard(x: number, y: number, t: number) {
+  ALIGN_BOXES.forEach((box, i) => {
+    const boxY = y + i * 30;
+    frame(box, x, boxY);
+    Draw.textBox(box, { position: { x, y: boxY, z: 0 } });
+  });
+
+  label(x, y + 94, "center, wrapped");
+  frame(CENTER_WRAP_BOX, x, y + 112);
+  Draw.textBox(CENTER_WRAP_BOX, { position: { x, y: y + 112, z: 0 } });
+
+  label(x, y + 166, "justify, fixed width, last line centered");
+  frame(JUSTIFY_FIXED_BOX, x, y + 184);
+  Draw.textBox(JUSTIFY_FIXED_BOX, { position: { x, y: y + 184, z: 0 } });
+
+  label(x, y + 256, "justify, width follows the time");
+  JUSTIFY_BOX.set({ width: Math.round(290 + Math.sin(t * 0.8) * 70) });
+  frame(JUSTIFY_BOX, x, y + 274);
+  Draw.textBox(JUSTIFY_BOX, { position: { x, y: y + 274, z: 0 } });
+}
+
+function overflowCard(x: number, y: number, t: number) {
+  label(x, y, "ellipsis, two lines");
+  frame(ELLIPSIS_BOX, x, y + 18);
+  Draw.textBox(ELLIPSIS_BOX, { position: { x, y: y + 18, z: 0 } });
+
+  label(x, y + 76, "ellipsis, one line");
+  frame(ITEM_BOX, x, y + 94);
+  Draw.textBox(ITEM_BOX, {
+    position: { x, y: y + 94, z: 0 },
+    color: COLOR.GOLD,
+  });
+
+  const name = TAVERN_NAMES[Math.floor(t / 2) % TAVERN_NAMES.length];
+  label(x, y + 140, "fit, wraps then shrinks");
+  SIGN_WRAP_BOX.set({ text: name });
+  frame(SIGN_WRAP_BOX, x, y + 158);
+  Draw.textBox(SIGN_WRAP_BOX, {
+    position: { x, y: y + 158, z: 0 },
+    color: COLOR.PEACH,
+  });
+
+  label(x, y + 224, "fit, one line");
+  SIGN_LINE_BOX.set({ text: name });
+  frame(SIGN_LINE_BOX, x, y + 242);
+  Draw.textBox(SIGN_LINE_BOX, {
+    position: { x, y: y + 242, z: 0 },
+    color: COLOR.PEACH,
+  });
+}
+
+function sortingCard(x: number, y: number, t: number) {
+  // a sign on the ground, the crate slides along the same bottom line:
+  // it is all in front of or all behind the sign, never between letters
+  const signBottom = y + 70;
+  Draw.text({
+    position: { x, y: signBottom - 44, z: 0 },
+    font: "latoBold",
+    text: "GENERAL STORE",
+    size: 36,
+    color: COLOR.GOLD,
+  });
+  Draw.rect({
+    position: {
+      x: x + ((Math.sin(t * 0.7) + 1) / 2) * 300,
+      y: signBottom - 64,
+      z: 0,
+    },
+    size: { width: 60, height: 64 },
+    color: COLOR.TAN,
+    outline: { width: 3, color: COLOR.BROWN },
+  });
+
+  // a lamp post on y 330, labels sort by the feet of their walker
+  const postX = x + 170;
+  const postBottom = y + 330;
+  Draw.rect({
+    position: { x: postX, y: postBottom - 250, z: 0 },
+    size: { width: 20, height: 250 },
+    color: [110, 116, 130, 255],
+  });
+  const walkers: [string, number, number, RGBA][] = [
+    ["in front", postBottom + 40, 0, COLOR.LIME],
+    ["behind", postBottom - 40, Math.PI, COLOR.TOMATO],
+  ];
+  for (const [text, feet, phase, color] of walkers) {
+    const walkerX = x + 30 + ((Math.sin(t * 0.5 + phase) + 1) / 2) * 300;
+    const sort = { x: walkerX, y: feet, z: 0 };
+    Draw.circle({
+      position: { x: walkerX, y: feet - 22, z: 0 },
+      radius: 22,
+      color,
+      sort,
+    });
+    const size = TextLayout.measure("latoBold", text, 20);
+    Draw.text({
+      position: { x: walkerX - size.width / 2, y: feet - 82, z: 0 },
+      font: "latoBold",
+      text,
+      size: 20,
+      color,
+      sort,
+    });
+  }
+}
+
+function materialCard(x: number, y: number) {
+  label(x, y, "uvScope glyph: the pattern repeats in every letter");
+  Draw.text({
+    position: { x, y: y + 18, z: 0 },
+    font: "blackOps",
+    text: "RAINBOW",
+    size: 48,
+    material: TEXT_RAINBOW,
+    params: [0.4, 1, 0, 0],
+  });
+  label(x, y + 86, "uvScope text: one pattern across the whole text");
+  Draw.text({
+    position: { x, y: y + 104, z: 0 },
+    font: "blackOps",
+    text: "RAINBOW",
+    size: 48,
+    material: TEXT_RAINBOW,
+    params: [0.4, 1, 0, 0],
+    uvScope: "text",
+  });
+
+  // ghost text, bottom at y + 280: the left crate ends above it (behind, seen
+  // through the letters), the right crate ends below it (in front, covers them)
+  label(x, y + 190, "alpha 60: behind and in front");
+  const textY = y + 220;
+  const bottom = textY + TextLayout.measure("blackOps", "GHOST", 56).height;
+  Draw.rect({
+    position: { x: x + 10, y: textY + 10, z: 0 },
+    size: { width: 110, height: bottom - textY - 20 },
+    color: COLOR.DODGER_BLUE,
+  });
+  Draw.rect({
+    position: { x: x + 140, y: textY + 10, z: 0 },
+    size: { width: 110, height: bottom - textY },
+    color: COLOR.DODGER_BLUE,
+  });
+  Draw.text({
+    position: { x, y: textY, z: 0 },
+    font: "blackOps",
+    text: "GHOST",
+    size: 56,
+    color: [255, 255, 255, 60],
+  });
+
+  label(x, y + 300, "outline grows outwards, drawn under all letters");
+  Draw.text({
+    position: { x, y: y + 318, z: 0 },
+    font: "blackOps",
+    text: "OUTLINE",
+    size: 40,
+    color: COLOR.GOLD,
+    outline: { width: 4, color: COLOR.BLACK },
+  });
+  Draw.text({
+    position: { x: x + 230, y: y + 330, z: 0 },
+    font: "testGrid",
+    text: "PIXEL",
+    size: 30,
+    outline: { width: 2, color: COLOR.DODGER_BLUE },
+  });
+}
+
+function logCard(x: number, y: number, t: number) {
+  frame(COLUMN_BOX, x, y);
+  Draw.textBox(COLUMN_BOX, { position: { x, y, z: 0 }, color: COLOR.SKY_BLUE });
+
+  label(x, y + 212, "tail: only the newest lines stay");
+  const count = Math.floor(t * 1.5);
+  let log = "";
+  for (let i = Math.max(0, count - 10); i <= count; i++) {
+    log += `${log ? "\n" : ""}${LOG_EVENTS[i % LOG_EVENTS.length]}`;
+  }
+  LOG_BOX.set({ text: log });
+  frame(LOG_BOX, x, y + 232);
+  Draw.textBox(LOG_BOX, { position: { x, y: y + 232, z: 0 } });
+}
+
+function guiPanel(t: number) {
+  const panelX = Aurora.canvas.width - PANEL_WIDTH - 20;
+  const x = panelX + 20;
+  DrawGui.rect({
+    position: { x: panelX, y: 20, z: 0 },
+    size: { width: PANEL_WIDTH, height: Aurora.canvas.height - 40 },
+    color: [16, 17, 24, 240],
+    outline: { width: 2, color: CARD_BORDER },
+    rounded: 14,
+  });
+  DrawGui.text({
+    position: { x, y: 36, z: 0 },
+    font: "latoBold",
+    text: "Dynamic fonts",
+    size: 24,
+  });
+  DrawGui.text({
+    position: { x, y: 66, z: 0 },
+    font: "lato",
+    text: "gui pass, canvas pixels, rasterized per size",
+    size: 14,
+    color: MUTED,
+  });
+
+  let y = 100;
+  for (const size of [9, 10, 11, 12, 13, 14, 16, 18, 22]) {
+    DrawGui.text({
+      position: { x, y, z: 0 },
+      font: "lato",
+      text: `${size}px  Zażółć gęślą jaźń 0123456789`,
+      size,
+    });
+    y += size + 7;
+  }
+  DrawGui.text({
+    position: { x, y, z: 0 },
+    font: "lato",
+    text: "14.6px and 15.4px both round to 15px",
+    size: 15,
+    color: COLOR.SKY_BLUE,
+  });
+  y += 32;
+
+  const styles: [string, string, number, RGBA][] = [
+    ["latoBold", "Lato Bold", 22, COLOR.WHITE],
+    ["latoItalic", "Lato Italic", 22, COLOR.WHITE],
+    ["medieval", "MedievalSharp, the Rusty Anchor", 28, COLOR.PEACH],
+    ["blackOps", "BLACK OPS ONE", 28, COLOR.GOLD],
+  ];
+  for (const [font, text, size, color] of styles) {
+    DrawGui.text({ position: { x, y, z: 0 }, font, text, size, color });
+    y += size + 10;
+  }
+
+  // letter spacing: fixed and breathing, the frame comes from measure
+  DrawGui.text({
+    position: { x, y, z: 0 },
+    font: "latoBold",
+    text: "CHAPTER ONE",
+    size: 18,
+    letterSpacing: 8,
+    color: MUTED,
+  });
+  y += 30;
+  const spacing = Math.round(3 + Math.sin(t * 1.5) * 5);
+  const spaced = TextLayout.measure("blackOps", "SPACING", 26, spacing);
+  DrawGui.rect({
+    position: { x, y, z: 0 },
+    size: spaced,
+    color: COLOR.TRANSPARENT,
+    outline: { width: 1, color: GUIDE },
+  });
+  DrawGui.text({
+    position: { x, y, z: 0 },
+    font: "blackOps",
+    text: "SPACING",
+    size: 26,
+    letterSpacing: spacing,
+    color: COLOR.GOLD,
+  });
+  y += 40;
+
+  DrawGui.text({
+    position: { x, y, z: 0 },
+    font: "latoBold",
+    text: "Outlined interface text",
+    size: 24,
+    outline: { width: 2, color: COLOR.BLACK },
+    color: COLOR.WHITE,
+  });
+  DrawGui.text({
+    position: { x: x + 300, y: y - 4, z: 0 },
+    font: "blackOps",
+    text: "GLOW",
+    size: 32,
+    color: COLOR.CYAN,
+    material: TEXT_GLOW,
+    params: [7 + Math.sin(t * 2), 0.45, 0.6, 0],
+  });
+  y += 44;
+
+  // png grid font with the same effects as ttf ones
+  DrawGui.text({
+    position: { x, y, z: 0 },
+    font: "testGrid",
+    text: "PIXEL",
+    size: 60,
+    color: COLOR.YELLOW,
+    outline: { width: 5, color: COLOR.MAGENTA },
+  });
+  DrawGui.text({
+    position: { x: x + 220, y, z: 0 },
+    font: "testGrid",
+    text: "NEON",
+    size: 60,
+    color: COLOR.HOT_PINK,
+    material: TEXT_GLOW,
+    params: [8, 0.55, 0.6, 0],
+  });
+  y += 76;
+  y += 8;
+
+  DrawGui.textBox(PANEL_PARAGRAPH, {
+    position: { x, y, z: 0 },
+    color: [210, 214, 228, 255],
+  });
+  y += PANEL_PARAGRAPH.getSize.height + 24;
+
+  // button: draw scale pulses around its center, the layout never changes
+  const pulse = 1 + Math.sin(t * 4) * 0.06;
+  const button = PANEL_BUTTON.getSize;
+  const centerX = x + button.width / 2;
+  const centerY = y + button.height / 2;
+  const scaled = { width: button.width * pulse, height: button.height * pulse };
+  const buttonPosition = {
+    x: centerX - scaled.width / 2,
+    y: centerY - scaled.height / 2,
+    z: 0,
+  };
+  DrawGui.rect({
+    position: buttonPosition,
+    size: scaled,
+    color: [40, 120, 70, 255],
+    outline: { width: 2, color: COLOR.LIME },
+    rounded: 10,
+  });
+  DrawGui.textBox(PANEL_BUTTON, { position: buttonPosition, scale: pulse });
+  DrawGui.text({
+    position: { x: x + 220, y: y + 14, z: 0 },
+    font: "lato",
+    text: "draw time scale",
+    size: 14,
+    color: MUTED,
+  });
+  y += button.height + 24;
+
+  const titles = ["VICTORY", "MISSION COMPLETE: HARBOUR SECURED"];
+  PANEL_TITLE.set({ text: titles[Math.floor(t / 2) % titles.length] });
+  DrawGui.textBox(PANEL_TITLE, { position: { x, y, z: 0 }, color: COLOR.GOLD });
 }
 
 function guiTest(t: number) {

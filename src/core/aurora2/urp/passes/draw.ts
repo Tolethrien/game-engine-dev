@@ -151,6 +151,7 @@ export default class DrawPass extends RenderPass {
   resources(res: PassResources) {
     res.readAsset("albedo");
     res.readAsset("ui");
+    res.readAsset("fonts");
     if (this.space === "screen") {
       res.sampler("linearClamp");
       res.create(

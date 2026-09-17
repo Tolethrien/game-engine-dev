@@ -1,5 +1,8 @@
 import { COLOR } from "@/core/axiom/color";
 import AssetManager, { AtlasPage } from "../assetManager";
+import Font, { FontData, Glyph } from "../text/font";
+import TextLayout from "../text/textLayout";
+import type TextBox from "../text/textBox";
 import Material from "../material";
 import defaultMaterial from "./shaders/materials/default.wgsl?raw";
 import type DrawPass from "./passes/draw";
@@ -12,6 +15,7 @@ export interface DrawOutline {
 }
 export type MaterialParams = [number, number, number, number];
 export type DrawAtlas = "world" | "ui";
+export type UvScope = "glyph" | "text";
 
 export const DEFAULT_MATERIAL = Material.create({
   name: "drawDefault",
@@ -20,9 +24,15 @@ export const DEFAULT_MATERIAL = Material.create({
 
 export interface DrawStyle {
   color?: RGBA;
+  /** shapes: drawn inwards over the edge, text: grows outwards, up to fontAtlas.spread */
   outline?: DrawOutline;
   material?: Material;
   params?: MaterialParams;
+  /**
+   * sorts by this point instead of the one taken from the shape and the sort
+   * anchor, e.g. feet under a tall sprite, or grid coordinates in isometry
+   */
+  sort?: Position3D;
 }
 export interface DrawRect extends DrawStyle {
   position: Position3D;
@@ -70,18 +80,73 @@ export interface DrawQuad extends DrawStyle {
   atlas?: DrawAtlas;
   crop?: Crop;
 }
+export interface DrawGlyph extends DrawStyle {
+  /** pen position on the baseline */
+  position: Position3D;
+  font: string;
+  char: string;
+  /** pixels, defaults to the native font size */
+  size?: number;
+}
+export interface DrawText extends DrawStyle {
+  /** top left corner of the text */
+  position: Position3D;
+  font: string;
+  text: string;
+  /** pixels, defaults to the native font size */
+  size?: number;
+  /** pixels added between letters, negative packs them */
+  letterSpacing?: number;
+  /** what the uv of the material spans: one letter (default) or the whole text */
+  uvScope?: UvScope;
+}
+export interface DrawTextBox extends DrawStyle {
+  /** top left corner of the box */
+  position: Position3D;
+  /** draw time transform (tweens), does not lay the text out again */
+  scale?: number;
+  /** what the uv of the material spans: one letter (default) or the whole text */
+  uvScope?: UvScope;
+}
 
 // must match SHAPE_* in draw.wgsl
 const SHAPE_BOX = 0;
 const SHAPE_ELLIPSE = 1;
 const SHAPE_QUAD = 2;
+const SHAPE_GLYPH = 3;
+const SHAPE_GLYPH_OUTLINE = 4;
+const SHAPE_MTSDF = 5;
+const SHAPE_MTSDF_OUTLINE = 6;
 // must match UI_ATLAS in draw.wgsl, marks a layer of the ui texture array
 const UI_ATLAS = 0x80000000;
 const NO_PARAMS = Object.freeze([0, 0, 0, 0]) as MaterialParams;
+const NO_OUTLINE_LAYERS: readonly null[] = [null];
+// uv of a letter inside its text, two values packed into one float, 12 bits each
+const UV_PACK = 4095;
+const WHOLE_UV = UV_PACK + UV_PACK * 4096;
+interface UvBlock {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+function clamp01(value: number) {
+  return value < 0 ? 0 : value > 1 ? 1 : value;
+}
+function packUvSize(width: number, height: number) {
+  return (
+    Math.round(clamp01(width) * UV_PACK) +
+    Math.round(clamp01(height) * UV_PACK) * 4096
+  );
+}
 
 export class DrawApi {
   private target: DrawPass | null = null;
   private warned = false;
+  // reused by blockSort, instances copy the values right away
+  private textSortPoint: Position3D = { x: 0, y: 0, z: 0 };
+  // reused by uvBlock, instances copy the values right away
+  private textUvBlock: UvBlock = { x: 0, y: 0, width: 1, height: 1 };
   private readonly name: string;
   private readonly atlas: DrawAtlas;
 
@@ -109,6 +174,7 @@ export class DrawApi {
     outline,
     material = DEFAULT_MATERIAL,
     params = NO_PARAMS,
+    sort,
   }: DrawRect) {
     this.instance(
       SHAPE_BOX,
@@ -123,6 +189,7 @@ export class DrawApi {
       material,
       params,
       position.z,
+      sort,
     );
   }
 
@@ -133,6 +200,7 @@ export class DrawApi {
     outline,
     material = DEFAULT_MATERIAL,
     params = NO_PARAMS,
+    sort,
   }: DrawCircle) {
     const size = radius * 2;
     this.instance(
@@ -148,6 +216,7 @@ export class DrawApi {
       material,
       params,
       position.z,
+      sort,
     );
   }
 
@@ -159,6 +228,7 @@ export class DrawApi {
     outline,
     material = DEFAULT_MATERIAL,
     params = NO_PARAMS,
+    sort,
   }: DrawEllipse) {
     this.instance(
       SHAPE_ELLIPSE,
@@ -173,6 +243,7 @@ export class DrawApi {
       material,
       params,
       position.z,
+      sort,
     );
   }
 
@@ -186,6 +257,7 @@ export class DrawApi {
     material = DEFAULT_MATERIAL,
     params = NO_PARAMS,
     z,
+    sort,
   }: DrawLine) {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
@@ -205,6 +277,7 @@ export class DrawApi {
       material,
       params,
       z,
+      sort,
     );
   }
 
@@ -222,6 +295,7 @@ export class DrawApi {
     outline,
     material = DEFAULT_MATERIAL,
     params = NO_PARAMS,
+    sort,
   }: DrawSprite) {
     const page = this.page(texture, atlas);
     const cropX = crop?.x ?? 0;
@@ -242,6 +316,7 @@ export class DrawApi {
       material,
       params,
       position.z,
+      sort,
     );
     if (!vert) return;
     this.writeTexture(
@@ -266,6 +341,7 @@ export class DrawApi {
     color = COLOR.WHITE,
     material = DEFAULT_MATERIAL,
     params = NO_PARAMS,
+    sort,
   }: DrawQuad) {
     const pass = this.target;
     if (!pass) return this.warnNoTarget();
@@ -284,7 +360,9 @@ export class DrawApi {
           ? Math.max(a.y, b.y, c.y, d.y)
           : (a.y + b.y + c.y + d.y) / 4;
 
-    const vert = pass.instance(color[3] === 255, material, sortX, sortY, z);
+    const vert = sort
+      ? pass.instance(color[3] === 255, material, sort.x, sort.y, sort.z)
+      : pass.instance(color[3] === 255, material, sortX, sortY, z);
     // quads pack their 4 points into position, size and radius
     vert.position(a.x, a.y);
     vert.size(b.x, b.y);
@@ -312,6 +390,220 @@ export class DrawApi {
       crop?.height ?? page.height,
       false,
       false,
+    );
+  }
+
+  /** no state, no wrapping, "\n" starts a new line */
+  public text({
+    position,
+    font: fontName,
+    text,
+    size,
+    letterSpacing = 0,
+    color = COLOR.WHITE,
+    outline,
+    material = DEFAULT_MATERIAL,
+    params = NO_PARAMS,
+    sort,
+    uvScope = "glyph",
+  }: DrawText) {
+    const font = AssetManager.getFont(fontName, size);
+    const textSize = Font.drawSize(font, size);
+    const scale = textSize / font.size;
+    const size2d = TextLayout.lines(font, text, textSize, undefined, letterSpacing);
+    const point = sort ?? this.blockSort(position, size2d);
+    const block = this.uvBlock(uvScope, position, size2d);
+    // outlines of all letters first, so no outline covers a neighbouring letter
+    for (const layer of this.textLayers(outline)) {
+      TextLayout.lines(
+        font,
+        text,
+        textSize,
+        (glyph, x, line) => {
+          const baseline =
+            position.y + (font.ascender + line * font.lineHeight) * scale;
+          this.writeGlyph(
+            glyph,
+            position.x + x + glyph.offsetX * scale,
+            baseline + glyph.offsetY * scale,
+            position.z,
+            scale,
+            color,
+            layer,
+            material,
+            params,
+            point,
+            block,
+          );
+        },
+        letterSpacing,
+      );
+    }
+  }
+
+  /** laid out text, the box lays out again only when it changed */
+  public textBox(
+    box: TextBox,
+    {
+      position,
+      scale = 1,
+      color = COLOR.WHITE,
+      outline,
+      material = DEFAULT_MATERIAL,
+      params = NO_PARAMS,
+      sort,
+      uvScope = "glyph",
+    }: DrawTextBox,
+  ) {
+    const count = box.getGlyphCount;
+    const glyphScale = box.getGlyphScale * scale;
+    const boxSize = box.getSize;
+    const size2d = {
+      width: boxSize.width * scale,
+      height: boxSize.height * scale,
+    };
+    const point = sort ?? this.blockSort(position, size2d);
+    const block = this.uvBlock(uvScope, position, size2d);
+    for (const layer of this.textLayers(outline)) {
+      for (let i = 0; i < count; i++) {
+        this.writeGlyph(
+          box.getGlyph(i),
+          position.x + box.getX(i) * scale,
+          position.y + box.getY(i) * scale,
+          position.z,
+          glyphScale,
+          color,
+          layer,
+          material,
+          params,
+          point,
+          block,
+        );
+      }
+    }
+  }
+
+  /** single character, returns the advance in pixels */
+  public glyph({
+    position,
+    font: fontName,
+    char,
+    size,
+    color = COLOR.WHITE,
+    outline,
+    material = DEFAULT_MATERIAL,
+    params = NO_PARAMS,
+    sort,
+  }: DrawGlyph) {
+    const font: FontData = AssetManager.getFont(fontName, size);
+    const glyph = TextLayout.glyph(font, char.codePointAt(0) ?? 0);
+    const scale = Font.drawSize(font, size) / font.size;
+    for (const layer of this.textLayers(outline)) {
+      this.writeGlyph(
+        glyph,
+        position.x + glyph.offsetX * scale,
+        position.y + glyph.offsetY * scale,
+        position.z,
+        scale,
+        color,
+        layer,
+        material,
+        params,
+        sort,
+        null,
+      );
+    }
+    return glyph.advance * scale;
+  }
+
+  /** the text block a material uv spans, null when every letter spans its own */
+  private uvBlock(scope: UvScope, position: Position3D, size: Size2D) {
+    if (scope !== "text") return null;
+    const block = this.textUvBlock;
+    block.x = position.x;
+    block.y = position.y;
+    block.width = size.width || 1;
+    block.height = size.height || 1;
+    return block;
+  }
+
+  /** what a text draws: the outline layer only when it has a visible outline */
+  private textLayers(outline: DrawOutline | undefined) {
+    return outline && outline.width > 0 && outline.color[3] > 0
+      ? [outline, null]
+      : NO_OUTLINE_LAYERS;
+  }
+
+  /**
+   * one sort point for a whole text, from its block and the sort anchor,
+   * so objects never slip between letters or lines
+   */
+  private blockSort(position: Position3D, size: Size2D) {
+    const anchor = this.target?.sort.anchor ?? "center";
+    const point = this.textSortPoint;
+    point.x = position.x + size.width / 2;
+    point.y =
+      anchor === "top"
+        ? position.y
+        : anchor === "bottom"
+          ? position.y + size.height
+          : position.y + size.height / 2;
+    point.z = position.z;
+    return point;
+  }
+
+  /** layer: the outline ring of the glyph, or null for its fill */
+  private writeGlyph(
+    glyph: Glyph,
+    left: number,
+    top: number,
+    z: number,
+    scale: number,
+    color: RGBA,
+    layer: DrawOutline | null,
+    material: Material,
+    params: MaterialParams,
+    sort: Position3D | undefined,
+    // set when the material uv should span the whole text instead of one letter
+    block: UvBlock | null,
+  ) {
+    const msdf = glyph.field === "mtsdf";
+    const shape = layer
+      ? (msdf ? SHAPE_MTSDF_OUTLINE : SHAPE_GLYPH_OUTLINE)
+      : (msdf ? SHAPE_MTSDF : SHAPE_GLYPH);
+    const vert = this.instance(
+      shape,
+      left,
+      top,
+      glyph.width * scale,
+      glyph.height * scale,
+      0,
+      0,
+      // the ring alone decides if the outline layer is opaque
+      layer ? layer.color : color,
+      layer ?? undefined,
+      material,
+      params,
+      z,
+      sort,
+    );
+    if (!vert) return;
+    vert.uvRect(glyph.uv[0], glyph.uv[1], glyph.uv[2], glyph.uv[3]);
+    vert.layer(glyph.page);
+    // glyphs have no rounded corners: radius carries the reach of their field
+    // and where this letter sits in the text, see the packing note in todo.md
+    if (!block) {
+      vert.radius(glyph.range, 0, 0, WHOLE_UV);
+      return;
+    }
+    vert.radius(
+      glyph.range,
+      clamp01((left - block.x) / block.width),
+      clamp01((top - block.y) / block.height),
+      packUvSize(
+        (glyph.width * scale) / block.width,
+        (glyph.height * scale) / block.height,
+      ),
     );
   }
 
@@ -361,6 +653,7 @@ export class DrawApi {
     material: Material,
     params: MaterialParams,
     z: number,
+    sort: Position3D | undefined,
   ): DrawWriter | null {
     const pass = this.target;
     if (!pass) {
@@ -373,19 +666,23 @@ export class DrawApi {
     if (color[3] === 0 && outlineWidth === 0) return null;
     if (width <= 0 || height <= 0) return null;
 
-    const centerX = x + width / 2;
-    const centerY = y + height / 2;
-    const anchor = pass.sort.anchor;
-    let sortY = centerY;
-    if (anchor !== "center") {
-      const extentY =
-        (Math.abs(Math.sin(rotation)) * width +
-          Math.abs(Math.cos(rotation)) * height) /
-        2;
-      sortY = anchor === "top" ? centerY - extentY : centerY + extentY;
+    let vert: DrawWriter;
+    if (sort) {
+      vert = pass.instance(color[3] === 255, material, sort.x, sort.y, sort.z);
+    } else {
+      const centerX = x + width / 2;
+      const centerY = y + height / 2;
+      const anchor = pass.sort.anchor;
+      let sortY = centerY;
+      if (anchor !== "center") {
+        const extentY =
+          (Math.abs(Math.sin(rotation)) * width +
+            Math.abs(Math.cos(rotation)) * height) /
+          2;
+        sortY = anchor === "top" ? centerY - extentY : centerY + extentY;
+      }
+      vert = pass.instance(color[3] === 255, material, centerX, sortY, z);
     }
-
-    const vert = pass.instance(color[3] === 255, material, centerX, sortY, z);
     const maxRadius = Math.min(width, height) / 2;
     vert.position(x, y);
     vert.size(width, height);
@@ -420,7 +717,9 @@ export class DrawApi {
   private warnNoTarget() {
     if (this.warned) return;
     this.warned = true;
-    console.warn(`${this.name} called, but there is no pass for it in the preset`);
+    console.warn(
+      `${this.name} called, but there is no pass for it in the preset`,
+    );
   }
 }
 

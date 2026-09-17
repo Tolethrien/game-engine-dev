@@ -1,7 +1,11 @@
 import { assert, loadImg } from "@axiom/utils";
 import Aurora from "./core";
+import Font, { DynamicFontSource, FontData, FontSource } from "./text/font";
+import DynamicFont from "./text/dynamicFont";
+import GlyphAtlas from "./text/glyphAtlas";
+import type { FontAtlasConfig } from "./config";
 
-export type AssetName = "albedo" | "normal" | "height" | "ui";
+export type AssetName = "albedo" | "normal" | "height" | "ui" | "fonts";
 export interface SetTexturesOptions {
   sources: TextureSource[];
   normalMaps: boolean;
@@ -34,6 +38,10 @@ const ALBEDO_NEUTRAL = [255, 255, 255, 255];
 const NORMAL_NEUTRAL = [128, 128, 255, 255];
 const HEIGHT_NEUTRAL = [0];
 const UI_FORMAT: GPUTextureFormat = "rgba8unorm";
+// glyph coverage is plain data, srgb decoding would move the edges
+const FONTS_FORMAT: GPUTextureFormat = "rgba8unorm";
+const FONTS_NEUTRAL = [0, 0, 0, 0];
+const DYNAMIC_SIZE = 16;
 const WORLD_ASSETS: AssetName[] = ["albedo", "normal", "height"];
 
 export default class AssetManager {
@@ -45,6 +53,12 @@ export default class AssetManager {
   private static uiWarned: Set<string> = new Set();
   private static pages: Map<string, AtlasPage> = new Map();
   private static warned: Set<string> = new Set();
+  private static fonts: Map<string, FontData> = new Map();
+  private static fontsVersion = 0;
+  private static dynamicSources: Map<string, DynamicFontSource> = new Map();
+  private static dynamicFonts: Map<string, Map<number, DynamicFont>> =
+    new Map();
+  private static glyphAtlas: GlyphAtlas | null = null;
 
   public static async setTextures({
     sources,
@@ -225,6 +239,95 @@ export default class AssetManager {
     this.uiPages = pages;
     this.uiWarned.clear();
   }
+  public static async setFonts(sources: FontSource[], atlas: FontAtlasConfig) {
+    const names: Set<string> = new Set();
+    for (const source of sources) {
+      assert(
+        !names.has(source.name),
+        `Font name "${source.name}" is used more than once`,
+      );
+      names.add(source.name);
+    }
+
+    const grids = sources.filter((source) => source.type === "grid");
+    const dynamics = sources.filter((source) => source.type === "dynamic");
+    const mtsdfs = sources.filter((source) => source.type === "mtsdf");
+    const [images, atlases] = await Promise.all([
+      Promise.all(grids.map((source) => this.loadImageData(source.url))),
+      Promise.all(mtsdfs.map((source) => this.loadRawBitmap(source.url))),
+      Promise.all(dynamics.map((source) => DynamicFont.load(source))),
+    ]);
+
+    // every font lives in the glyph atlas pages, layer 0 stays empty
+    const pages = sources.length > 0 ? atlas.pages : 0;
+    const texture = this.buildArray(
+      "fonts",
+      FONTS_FORMAT,
+      FONTS_NEUTRAL,
+      [],
+      atlas.pageSize,
+      atlas.pageSize,
+      pages,
+    );
+    const glyphAtlas =
+      pages > 0
+        ? new GlyphAtlas(texture, 1, pages, atlas.pageSize, atlas.spread)
+        : null;
+
+    const fonts: Map<string, FontData> = new Map();
+    grids.forEach((source, i) => {
+      fonts.set(source.name, Font.fromGrid(source, images[i], glyphAtlas!));
+    });
+    mtsdfs.forEach((source, i) => {
+      const bitmap = atlases[i];
+      const slot = glyphAtlas!.storeBitmap(bitmap);
+      assert(
+        slot !== null,
+        `Font "" has a x atlas that does not fit a page of px`,
+      );
+      fonts.set(
+        source.name,
+        Font.fromMtsdf(source, slot, glyphAtlas!.layerSize),
+      );
+      bitmap.close();
+    });
+
+    this.textures.get("fonts")?.destroy();
+    this.textures.set("fonts", texture);
+    this.views.set(
+      "fonts",
+      texture.createView({ label: "fontsArrayView", dimension: "2d-array" }),
+    );
+    this.fonts = fonts;
+    this.dynamicSources = new Map(
+      dynamics.map((source) => [source.name, source]),
+    );
+    this.dynamicFonts.clear();
+    this.glyphAtlas = glyphAtlas;
+    this.fontsVersion++;
+  }
+  /** changes whenever glyphs may have moved, text boxes lay out again */
+  public static get getFontsVersion() {
+    return this.fontsVersion;
+  }
+  /** size only matters for dynamic fonts, rounded to whole pixels */
+  public static getFont(name: string, size?: number): FontData {
+    const font = this.fonts.get(name);
+    if (font) return font;
+
+    const source = this.dynamicSources.get(name);
+    assert(source !== undefined, `Font "${name}" is not loaded`);
+    const pixels = Math.max(1, Math.round(size ?? source.size ?? DYNAMIC_SIZE));
+    let sizes = this.dynamicFonts.get(name);
+    if (!sizes) this.dynamicFonts.set(name, (sizes = new Map()));
+    let dynamic = sizes.get(pixels);
+    if (!dynamic) {
+      dynamic = new DynamicFont(name, pixels, this.glyphAtlas!);
+      sizes.set(pixels, dynamic);
+    }
+    return dynamic;
+  }
+
   public static getTexture(name: string): AtlasPage {
     const page = this.pages.get(name);
     if (page) return page;
@@ -259,6 +362,25 @@ export default class AssetManager {
     return createImageBitmap(await loadImg(url));
   }
 
+  /** straight from the file: distance fields must not be premultiplied or converted */
+  private static async loadRawBitmap(url: string) {
+    const blob = await (await fetch(url)).blob();
+    return createImageBitmap(blob, {
+      premultiplyAlpha: "none",
+      colorSpaceConversion: "none",
+    });
+  }
+
+  /** pixels on the cpu, for fonts copied cell by cell into the glyph atlas */
+  private static async loadImageData(url: string) {
+    const bitmap = (await this.loadBitmap(url))!;
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d", { willReadFrequently: true })!;
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return context.getImageData(0, 0, canvas.width, canvas.height);
+  }
+
   private static buildArray(
     name: AssetName,
     format: GPUTextureFormat,
@@ -266,9 +388,11 @@ export default class AssetManager {
     bitmaps: (ImageBitmap | null)[],
     width: number,
     height: number,
+    // neutral layers after the bitmaps, filled later (glyph atlas pages)
+    extraLayers = 0,
   ) {
     const hasAny = bitmaps.some((bitmap) => bitmap !== null);
-    const layers = hasAny ? bitmaps.length + 1 : 1;
+    const layers = (hasAny ? bitmaps.length + 1 : 1) + extraLayers;
     const texture = Aurora.device.createTexture({
       label: `${name}Array`,
       format,

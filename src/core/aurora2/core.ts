@@ -179,6 +179,7 @@ export default class Aurora {
         heightMaps: this.settings.rendering.heightMaps,
       }),
       AssetManager.setUITextures(this.settings.userUI),
+      AssetManager.setFonts(this.settings.fonts, this.settings.fontAtlas),
     ]);
     SharedBinds.buildAssets();
     this.configured = true;

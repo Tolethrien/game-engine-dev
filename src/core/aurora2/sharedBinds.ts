@@ -24,9 +24,15 @@ const ASSET_BINDINGS: Record<AssetName, number> = {
   normal: 1,
   height: 2,
   ui: 3,
+  fonts: 4,
 };
 const FIRST_GLOBAL_BINDING = 4;
 const SAMPLER_BINDING = 5;
+// fixed samplers for fonts, independent of the sampler a pass picks
+const FONT_SAMPLER_BINDINGS: [number, SamplerName][] = [
+  [6, "nearestClamp"],
+  [7, "linearClamp"],
+];
 export const ALL_STAGES =
   GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE;
 const TIME_WRAP = 3600;
@@ -172,6 +178,14 @@ export default class SharedBinds {
         GPUShaderStage.COMPUTE,
       sampler: { type: "filtering" },
     });
+    for (const [binding, samplerName] of FONT_SAMPLER_BINDINGS) {
+      layoutEntries.push({
+        binding,
+        visibility: ALL_STAGES,
+        sampler: { type: "filtering" },
+      });
+      entries.push({ binding, resource: this.samplers.get(samplerName)! });
+    }
 
     this.assetsLayout = Aurora.device.createBindGroupLayout({
       label: "assetsLayout",

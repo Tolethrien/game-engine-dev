@@ -7,9 +7,14 @@
 
 ## Assety
 
-- **Fonty**: tablica fontów w `AssetManager` jest przewidziana (binding 4 w grupie 1). Do ustalenia przy passach tekstu:
-  - gdzie żyją metryki znaków (MSDF JSON) potrzebne do układania tekstu na CPU,
-  - jak wygląda domyślny font pod indeksem 0.
+- **Fonty**: tablica fontów w `AssetManager` (binding 4 w grupie 1), metryki w `FontData`.
+  - Domyślny font pod indeksem 0: nieustalone.
+  - **Dynamiczny atlas ma stałą liczbę stron** (`fontAtlas.pages` w configu), po zapełnieniu tylko ostrzeżenie i znak zastępczy. Do zrobienia:
+    - powiększanie tablicy w locie (nowa tekstura, kopia stron, przebudowa grupy 1 i grafu, bez gubienia klatki),
+    - usuwanie nieużywanych liter (licznik użycia per glif, zwalnianie półek, unieważnienie `TextBox` przez `getFontsVersion`).
+  - **Kerning** w dynamicznym atlasie: brak. Pary z `measureText` z cache'em albo odczyt z TTF.
+  - Wszystkie warstwy tablicy mają ten sam rozmiar, więc strony fontów bitmapowych rosną do rozmiaru strony dynamicznej.
+- **`devicePixelRatio`**: canvas dostaje rozmiar okna z Electrona, najpewniej w pikselach logicznych. Przy skalowaniu Windowsa (125%, 150%) przeglądarka rozciąga cały obraz i wszystko jest lekko miękkie, także GUI i dynamiczny tekst, które nie będą ostrzejsze niż canvas. Do ustalenia na poziomie silnika: canvas w pikselach fizycznych (`size * devicePixelRatio`), co z `renderRes`, skalą NAVI i współrzędnymi myszy.
 - **Podmiana zestawu tekstur w trakcie gry** (świat i UI). Obecnie zestaw wczytywany raz w `config`.
   - Już działa: stary zestaw rysuje się do końca wczytywania, podmiana wypada między klatkami, dane sprite'ów po nazwie aktualizują się same.
   - Przebudowa grupy 1 (`SharedBinds.buildAssets`) i passów (`RenderGraph.rebuild`), bo zmienia się layout assetów.
@@ -91,6 +96,19 @@ Obecnie jedna, globalna: `Aurora.setCamera` → binding 1 w grupie 0 (position, 
   - Warunek: na produkcji nic z tego nie może się wykonywać ani być wymagane. Rozwiązanie musi iść przez alias `@debug`, a nie runtime'owe `if` w klasie leżącej w Aurorze.
 
 ## Draw
+
+- **Pola instancji są upakowane, nie dokładać ich bezmyślnie.** Instancja ma dziś 104 bajty i każde nowe pole kosztuje na wszystkim, co rysujemy, nie tylko na tekście. Dlatego glify korzystają z pól, których nie używają:
+  - `radius.x` = zasięg pola odległości glifu w tekselach (`spread` albo połowa `distanceRange`),
+  - `radius.y`, `radius.z` = początek litery w układzie całego napisu (0–1),
+  - `radius.w` = rozmiar litery w tym układzie, dwie wartości spakowane po 12 bitów (0–4095 każda),
+  - `rotation` zostaje wolne, pod obracany tekst.
+  - Wolne miejsce się kończy. Przy kolejnych polach (emisja pod bloom, heightmapa, warstwa świateł) trzeba **przepakować wszystko naraz**: policzyć, co jest potrzebne per kształt, i rozłożyć na nowo, zamiast dokładać kolejne wyjątki.
+
+- **Cień tekstu i kształtów**, odłożony do czasu `style.shadow` w NAVI, bo to ten sam mechanizm.
+  - Trzecia warstwa tekstu, obok obrysu i wypełnienia: najpierw cienie wszystkich liter, potem obrysy, potem wypełnienia, z tym samym punktem sortowania.
+  - API: `shadow: { offset, blur, color }` w `Draw.text`, `textBox` i `glyph`, a przy kształtach w `rect` i reszcie.
+  - Przesunięcie robi CPU (przesuwa kwadrat), więc może być dowolne. Pokrycie liczy shader z pola odległości, a `blur` niesie wolne przy cieniu pole `outlineWidth`.
+  - Ograniczenia: rozmycie sięga tyle, co pole odległości (`spread`, przy MTSDF połowa `distanceRange`), a cienie sąsiednich liter nakładają się na siebie, więc przy półprzezroczystym kolorze robi się w tych miejscach ciemniej. Miękki cień pod całym napisem wymagałby osobnego passa.
 
 - **Polygon** (dowolny kształt z punktów), odłożony. `Draw.quad` pokrywa czworokąty do morfowania tekstur, polygon ma być ogólnym kształtem z N punktów.
   - Nie mieści się w instancji: zmienna liczba wierzchołków, więc osobny bufor i osobne wywołanie rysujące (pęka batch).
