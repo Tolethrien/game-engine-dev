@@ -10,6 +10,7 @@ import shader from "../shaders/present.wgsl?raw";
 
 const BINDS = {
   offscreenCanvas: { binding: 0, type: "texture" },
+  gui: { binding: 1, type: "texture" },
 } satisfies PassBindEntries;
 
 export default class PresentPass extends RenderPass {
@@ -29,6 +30,7 @@ export default class PresentPass extends RenderPass {
 
   resources(res: PassResources) {
     res.read("offscreenCanvas");
+    res.read("gui");
     res.sampler("linearClamp");
     res.writeCanvas({ loadOp: "clear", clearValue: [0, 0, 0, 0] });
   }
@@ -37,7 +39,10 @@ export default class PresentPass extends RenderPass {
     encoder.setPipeline(this.pipeline);
     encoder.setBindGroup(
       2,
-      this.binds.get({ offscreenCanvas: ctx.view("offscreenCanvas") }),
+      this.binds.get({
+        offscreenCanvas: ctx.view("offscreenCanvas"),
+        gui: ctx.view("gui"),
+      }),
     );
     encoder.draw(6);
   }

@@ -14,17 +14,42 @@ struct Camera {
 };
 const SHAPE_BOX: u32 = 0u;
 const SHAPE_ELLIPSE: u32 = 1u;
+const SHAPE_QUAD: u32 = 2u;
+struct SortParams {
+  // per axis: x, y, z
+  origin: vec3f,
+  total: f32,
+  step: vec3f,
+  _pad0: f32,
+  count: vec3f,
+  _pad1: f32,
+  // 0 for axes the mode does not use
+  weight: vec3f,
+  _pad2: f32,
+};
 @group(0) @binding(0) var<uniform> frame: Frame;
 @group(0) @binding(1) var<uniform> camera: Camera;
 @group(1) @binding(0) var albedo: texture_2d_array<f32>;
+@group(1) @binding(3) var uiAtlas: texture_2d_array<f32>;
 @group(1) @binding(5) var texSampler: sampler;
+@group(2) @binding(0) var<uniform> sortParams: SortParams;
 override linearColors: bool = true;
 override depthSort: bool = false;
 override opaquePass: bool = false;
-override sortMargin: f32 = 0.0;
+// gui: positions are canvas pixels, no camera, target is canvas sized
+override screenSpace: bool = false;
+// must match UI_ATLAS in draw.ts, marks a layer of the ui texture array
+const UI_ATLAS: u32 = 0x80000000u;
+
+fn viewSize() -> vec2f {
+  return select(frame.renderSize, frame.canvasSize, screenSpace);
+}
 // anchor is snapped to whole render texels, offset is not,
 // so rotated and rounded shapes keep their exact form
 fn worldToPixel(anchor: vec2f, offset: vec2f) -> vec2f {
+  if (screenSpace) {
+    return floor(anchor + 0.5) + offset;
+  }
   let center = floor(frame.renderSize * 0.5);
   let cam = floor((camera.position + center) * camera.zoom + 0.5);
   let rel = floor(anchor * camera.zoom + 0.5) - cam + offset * camera.zoom;
@@ -35,14 +60,17 @@ fn worldToPixel(anchor: vec2f, offset: vec2f) -> vec2f {
   let s = sin(camera.rotation);
   return vec2f(rel.x * c - rel.y * s, rel.x * s + rel.y * c) + center;
 }
-fn sortDepth(point: vec2f) -> f32 {
-  let center = floor(frame.renderSize.y * 0.5);
-  let cam = floor((camera.position.y + center) * camera.zoom + 0.5);
-  let pixel = floor(point.y * camera.zoom + 0.5) - cam + center + sortMargin;
-  let range = frame.renderSize.y + sortMargin * 2.0;
-  let row = clamp(pixel, 0.0, range - 1.0);
-  return 1.0 - (row + 1.0) / (range + 1.0);
+// larger key is closer, must match sortKey in passes/draw.ts
+fn sortDepth(point: vec3f) -> f32 {
+  let index = clamp(
+    floor((point - sortParams.origin) / sortParams.step),
+    vec3f(0.0),
+    sortParams.count - 1.0,
+  );
+  let key = dot(index, sortParams.weight);
+  return 1.0 - (key + 1.0) / (sortParams.total + 1.0);
 }
+
 // approximate distance: exact on the edge, good enough for
 // antialiasing and outlines, drifts only for thick outlines
 // on very stretched ellipses
@@ -57,7 +85,7 @@ fn ellipse(p: vec2f, radius: vec2f) -> f32 {
 }
 
 fn pixelToClip(pixel: vec2f) -> vec4f {
-  return vec4f(pixel / frame.renderSize * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
+  return vec4f(pixel / viewSize() * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
 }
 
 fn inputColor(color: vec4f) -> vec4f {
@@ -82,7 +110,45 @@ fn roundedBox(p: vec2f, halfSize: vec2f, radius: vec4f) -> f32 {
   return min(max(q.x, q.y), 0.0) + length(max(q, vec2f(0.0))) - r;
 }
 
-struct RectIn {
+fn cross2(a: vec2f, b: vec2f) -> f32 {
+  return a.x * b.y - a.y * b.x;
+}
+
+// uv of p inside quad a, b, c, d (clockwise from top left), outside when not in 0..1,
+// keeps the texture straight where two triangles would kink along the diagonal
+fn invBilinear(p: vec2f, a: vec2f, b: vec2f, c: vec2f, d: vec2f) -> vec2f {
+  let e = b - a;
+  let f = d - a;
+  let g = a - b + c - d;
+  let h = p - a;
+  let k2 = cross2(g, f);
+  let k1 = cross2(e, f) + cross2(h, g);
+  let k0 = cross2(h, e);
+
+  let w = k1 * k1 - 4.0 * k0 * k2;
+  if (w < 0.0) {
+    return vec2f(-1.0);
+  }
+  // stable roots: k0 / q stays exact when k2 is near zero (almost a parallelogram),
+  // dividing by a tiny k2 there loses all precision and the texture collapses
+  let q = -0.5 * (k1 + select(-1.0, 1.0, k1 >= 0.0) * sqrt(w));
+  var v = k0 / q;
+  var u = quadU(h, e, f, g, v);
+  if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) {
+    v = q / k2;
+    u = quadU(h, e, f, g, v);
+  }
+  return vec2f(u, v);
+}
+
+// solves u from the larger axis, a vertical or horizontal edge would divide by zero
+fn quadU(h: vec2f, e: vec2f, f: vec2f, g: vec2f, v: f32) -> f32 {
+  let denX = e.x + g.x * v;
+  let denY = e.y + g.y * v;
+  return select((h.y - f.y * v) / denY, (h.x - f.x * v) / denX, abs(denX) > abs(denY));
+}
+
+struct InstanceIn {
   @location(0) position: vec2f,
   @location(1) size: vec2f,
   @location(2) rotation: f32,
@@ -90,10 +156,11 @@ struct RectIn {
   @location(4) outlineWidth: f32,
   @location(5) color: vec4f,
   @location(6) outlineColor: vec4f,
- @location(7) shape: u32,
+  @location(7) shape: u32,
   @location(8) uvRect: vec4f,
   @location(9) layer: u32,
-  @location(10) sortPoint: vec2f
+  @location(10) sortPoint: vec3f,
+  @location(11) params: vec4f,
 };
 
 struct VertexOut {
@@ -104,68 +171,139 @@ struct VertexOut {
   @location(3) @interpolate(flat) outlineWidth: f32,
   @location(4) @interpolate(flat) color: vec4f,
   @location(5) @interpolate(flat) outlineColor: vec4f,
-   @location(6) @interpolate(flat) shape: u32,
+  @location(6) @interpolate(flat) shape: u32,
   @location(7) @interpolate(flat) uvRect: vec4f,
   @location(8) @interpolate(flat) layer: u32,
+  @location(9) @interpolate(flat) params: vec4f,
+  // quad corners relative to its first point
+  @location(10) @interpolate(flat) quadB: vec2f,
+  @location(11) @interpolate(flat) quadC: vec2f,
+  @location(12) @interpolate(flat) quadD: vec2f,
 };
 
 @vertex
-fn vertexMain(@builtin(vertex_index) index: u32, rect: RectIn) -> VertexOut {
+fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> VertexOut {
   var corners = array<vec2f, 6>(
     vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
     vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0),
   );
-  let halfSize = rect.size * 0.5;
-  // one render texel of margin for antialiasing
-  let pad = 1.0 / camera.zoom;
-  let local = corners[index] * (halfSize + pad);
-
-  let c = cos(rect.rotation);
-  let s = sin(rect.rotation);
-  let rotated = vec2f(local.x * c - local.y * s, local.x * s + local.y * c);
-
+  let corner = corners[index];
   var out: VertexOut;
-  out.position = pixelToClip(worldToPixel(rect.position, halfSize + rotated));
-   out.position.z = select(0.0, sortDepth(rect.sortPoint), depthSort);
-  out.local = local;
-  out.halfSize = halfSize;
-  out.radius = rect.radius;
-  out.outlineWidth = rect.outlineWidth;
-  out.color = premultiply(inputColor(rect.color));
-  out.outlineColor = premultiply(inputColor(rect.outlineColor));
- out.shape = rect.shape;
-  out.uvRect = rect.uvRect;
-  out.layer = rect.layer;
+
+  if (instance.shape == SHAPE_QUAD) {
+    // quads pack their 4 points into position, size and radius
+    let a = instance.position;
+    let b = instance.size;
+    let c = instance.radius.xy;
+    let d = instance.radius.zw;
+    let top = select(a, b, corner.x > 0.0);
+    let bottom = select(d, c, corner.x > 0.0);
+    let point = select(top, bottom, corner.y > 0.0);
+    out.position = pixelToClip(worldToPixel(a, point - a));
+    out.local = point - a;
+    out.halfSize = vec2f(length(b - a), length(d - a)) * 0.5;
+    out.quadB = b - a;
+    out.quadC = c - a;
+    out.quadD = d - a;
+  } else {
+    let halfSize = instance.size * 0.5;
+    // one render texel of margin for antialiasing
+    let pad = select(1.0 / camera.zoom, 1.0, screenSpace);
+    let local = corner * (halfSize + pad);
+    let c = cos(instance.rotation);
+    let s = sin(instance.rotation);
+    let rotated = vec2f(local.x * c - local.y * s, local.x * s + local.y * c);
+    out.position = pixelToClip(worldToPixel(instance.position, halfSize + rotated));
+    out.local = local;
+    out.halfSize = halfSize;
+  }
+
+  out.position.z = select(0.0, sortDepth(instance.sortPoint), depthSort);
+  out.radius = instance.radius;
+  out.outlineWidth = instance.outlineWidth;
+  out.color = premultiply(inputColor(instance.color));
+  out.outlineColor = premultiply(inputColor(instance.outlineColor));
+  out.shape = instance.shape;
+  out.uvRect = instance.uvRect;
+  out.layer = instance.layer;
+  out.params = instance.params;
   return out;
 }
 
+struct MaterialInput {
+  // 0..1 across the shape, before rotation
+  uv: vec2f,
+  // pixels from the shape center, before rotation
+  local: vec2f,
+  size: vec2f,
+  // premultiplied
+  color: vec4f,
+  outlineColor: vec4f,
+  texel: vec4f,
+  // 1 on the outline band, 0 inside the fill
+  ring: f32,
+  // signed distance to the outer edge, negative inside, uv units on quads
+  dist: f32,
+  params: vec4f,
+};
+
+// MATERIAL
+
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
-  // clamp keeps the antialiasing margin from reading neighbours in the atlas
-  let uv01 = clamp(in.local / in.halfSize * 0.5 + 0.5, vec2f(0.0), vec2f(1.0));
-  let uv = in.uvRect.xy + uv01 * in.uvRect.zw;
-  let texel = premultiply(textureSample(albedo, texSampler, uv, in.layer));
-
+  var uv01: vec2f;
+  var local = in.local;
   var dist: f32;
-  if (in.shape == SHAPE_ELLIPSE) {
-    dist = ellipse(in.local, in.halfSize);
+
+  if (in.shape == SHAPE_QUAD) {
+    let quadUv = invBilinear(in.local, vec2f(0.0), in.quadB, in.quadC, in.quadD);
+    dist = -min(min(quadUv.x, 1.0 - quadUv.x), min(quadUv.y, 1.0 - quadUv.y));
+    uv01 = clamp(quadUv, vec2f(0.0), vec2f(1.0));
+    // materials get a centered local like on other shapes
+    local = (uv01 - 0.5) * in.halfSize * 2.0;
   } else {
-    dist = roundedBox(in.local, in.halfSize, in.radius);
+    // clamp keeps the antialiasing margin from reading neighbours in the atlas
+    uv01 = clamp(in.local / in.halfSize * 0.5 + 0.5, vec2f(0.0), vec2f(1.0));
+    if (in.shape == SHAPE_ELLIPSE) {
+      dist = ellipse(in.local, in.halfSize);
+    } else {
+      dist = roundedBox(in.local, in.halfSize, in.radius);
+    }
   }
+
+  let uv = in.uvRect.xy + uv01 * in.uvRect.zw;
+  // textures have no mips, so the level sample works inside a branch
+  let layer = in.layer & ~UI_ATLAS;
+  var sampled: vec4f;
+  if ((in.layer & UI_ATLAS) != 0u) {
+    // ui array is plain rgba8unorm, unlike the srgb albedo it needs decoding here
+    sampled = inputColor(textureSampleLevel(uiAtlas, texSampler, uv, layer, 0.0));
+  } else {
+    sampled = textureSampleLevel(albedo, texSampler, uv, layer, 0.0);
+  }
+  let texel = premultiply(sampled);
   let aa = max(fwidth(dist), 0.0001);
   let shape = clamp(0.5 - dist / aa, 0.0, 1.0);
   let fill = clamp(0.5 - (dist + in.outlineWidth) / aa, 0.0, 1.0);
 
-  // outline is layered over the fill, ring = 1 on the outline band
-  let ring = (shape - fill) / max(shape, 0.0001);
-  let outline = in.outlineColor * ring;
-  let layered = outline + in.color * texel * (1.0 - outline.a);
+  var input: MaterialInput;
+  input.uv = uv01;
+  input.local = local;
+  input.size = in.halfSize * 2.0;
+  input.color = in.color;
+  input.outlineColor = in.outlineColor;
+  input.texel = texel;
+  input.ring = (shape - fill) / max(shape, 0.0001);
+  input.dist = dist;
+  input.params = in.params;
+  let color = material(input);
+
   if (opaquePass) {
     // hard outer edge, a partly covered pixel must not write depth
-    if (shape * texel.a < 0.5) {
+    if (shape * color.a < 0.5) {
       discard;
     }
-    return vec4f(layered.rgb, 1.0);
+    return vec4f(color.rgb, 1.0);
   }
-  return layered * shape;
+  return color * shape;
 }

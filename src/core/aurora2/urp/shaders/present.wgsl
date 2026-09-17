@@ -1,5 +1,7 @@
 @group(1) @binding(5) var texSampler: sampler;
 @group(2) @binding(0) var offscreenCanvas: texture_2d<f32>;
+// canvas sized, read texel to texel
+@group(2) @binding(1) var gui: texture_2d<f32>;
 
 override linearColors: bool = true;
 
@@ -33,11 +35,10 @@ fn vertexMain(@builtin(vertex_index) index: u32) -> VertexOut {
 
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
-  let color = clamp(
-    textureSample(offscreenCanvas, texSampler, in.uv),
-    vec4f(0.0),
-    vec4f(1.0),
-  );
+  let scene = textureSample(offscreenCanvas, texSampler, in.uv);
+  let overlay = textureLoad(gui, vec2u(in.position.xy), 0);
+  // both premultiplied and linear, composed before the single srgb encode
+  let color = clamp(overlay + scene * (1.0 - overlay.a), vec4f(0.0), vec4f(1.0));
   if (color.a <= 0.0) {
     return vec4f(0.0);
   }

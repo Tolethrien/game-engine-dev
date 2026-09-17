@@ -1,5 +1,7 @@
 import { COLOR } from "@/core/axiom/color";
-import AssetManager from "../assetManager";
+import AssetManager, { AtlasPage } from "../assetManager";
+import Material from "../material";
+import defaultMaterial from "./shaders/materials/default.wgsl?raw";
 import type DrawPass from "./passes/draw";
 import type { DrawWriter } from "./passes/draw";
 
@@ -8,94 +10,105 @@ export interface DrawOutline {
   width: number;
   color: RGBA;
 }
-export interface DrawRect {
-  position: Position2D;
-  size: Size2D;
+export type MaterialParams = [number, number, number, number];
+export type DrawAtlas = "world" | "ui";
+
+export const DEFAULT_MATERIAL = Material.create({
+  name: "drawDefault",
+  fragment: defaultMaterial,
+});
+
+export interface DrawStyle {
   color?: RGBA;
-  /** radians, clockwise, around the rect center */
+  outline?: DrawOutline;
+  material?: Material;
+  params?: MaterialParams;
+}
+export interface DrawRect extends DrawStyle {
+  position: Position3D;
+  size: Size2D;
   rotation?: number;
-  /** pixels, single value or [topLeft, topRight, bottomRight, bottomLeft] */
   rounded?: CornerRadius;
-  /** drawn inside the rect, size does not change */
-  outline?: DrawOutline;
 }
-export interface DrawCircle {
-  /** center of the circle */
-  position: Position2D;
+export interface DrawCircle extends DrawStyle {
+  position: Position3D;
   radius: number;
-  color?: RGBA;
-  /** drawn inside the circle, radius does not change */
-  outline?: DrawOutline;
 }
-export interface DrawEllipse {
-  /** center of the ellipse */
-  position: Position2D;
-  /** full width and height */
+export interface DrawEllipse extends DrawStyle {
+  position: Position3D;
   size: Size2D;
-  color?: RGBA;
-  /** radians, clockwise, around the center */
   rotation?: number;
-  /** drawn inside the ellipse, size does not change */
-  outline?: DrawOutline;
 }
 export type LineCap = "butt" | "round" | "square";
-export interface DrawLine {
+export interface DrawLine extends DrawStyle {
   from: Position2D;
   to: Position2D;
-  /** thickness in pixels */
+  /** sort only, does not move the line on screen */
+  z: number;
   width: number;
-  color?: RGBA;
-  /** butt ends exactly at the points, round and square extend by half the width */
   cap?: LineCap;
-  /** drawn inside the line, thickness does not change */
-  outline?: DrawOutline;
 }
-export interface DrawSprite {
-  /** top left corner, like rect */
-  position: Position2D;
-  /** name from userTextures */
+export interface DrawSprite extends DrawStyle {
+  position: Position3D;
   texture: string;
-  /** defaults to crop size */
+  /** userTextures or userUI, defaults to the one of the facade */
+  atlas?: DrawAtlas;
   size?: Size2D;
-  /** pixels in the source image, defaults to the whole image */
   crop?: Crop;
-  /** multiplies the texture */
-  color?: RGBA;
-  /** radians, clockwise, around the center */
   rotation?: number;
   flipX?: boolean;
   flipY?: boolean;
-  /** clips the sprite, same as rect */
   rounded?: CornerRadius;
-  /** follows the sprite rect, not its transparent pixels */
-  outline?: DrawOutline;
+}
+export interface DrawQuad extends DrawStyle {
+  /** clockwise from top left, the texture corners follow this order */
+  points: [Position2D, Position2D, Position2D, Position2D];
+  /** sort only, does not move the quad on screen */
+  z: number;
+  texture?: string;
+  /** userTextures or userUI, defaults to the one of the facade */
+  atlas?: DrawAtlas;
+  crop?: Crop;
 }
 
 // must match SHAPE_* in draw.wgsl
 const SHAPE_BOX = 0;
 const SHAPE_ELLIPSE = 1;
+const SHAPE_QUAD = 2;
+// must match UI_ATLAS in draw.wgsl, marks a layer of the ui texture array
+const UI_ATLAS = 0x80000000;
+const NO_PARAMS = Object.freeze([0, 0, 0, 0]) as MaterialParams;
 
-export default class Draw {
-  private static target: DrawPass | null = null;
-  private static warned = false;
+export class DrawApi {
+  private target: DrawPass | null = null;
+  private warned = false;
+  private readonly name: string;
+  private readonly atlas: DrawAtlas;
 
-  public static setTarget(pass: DrawPass) {
+  constructor(name: string, atlas: DrawAtlas) {
+    this.name = name;
+    this.atlas = atlas;
+  }
+
+  public setTarget(pass: DrawPass) {
     this.target = pass;
   }
-  public static clearTarget(pass: DrawPass) {
+  public clearTarget(pass: DrawPass) {
     if (this.target === pass) this.target = null;
   }
-  public static beginFrame() {
+  public beginFrame() {
     this.target?.beginFrame();
   }
 
-  public static rect({
+  public rect({
     position,
     size,
     color = COLOR.WHITE,
     rotation = 0,
     rounded = 0,
     outline,
+    material = DEFAULT_MATERIAL,
+    params = NO_PARAMS,
   }: DrawRect) {
     this.instance(
       SHAPE_BOX,
@@ -107,14 +120,19 @@ export default class Draw {
       rounded,
       color,
       outline,
+      material,
+      params,
+      position.z,
     );
   }
 
-  public static circle({
+  public circle({
     position,
     radius,
     color = COLOR.WHITE,
     outline,
+    material = DEFAULT_MATERIAL,
+    params = NO_PARAMS,
   }: DrawCircle) {
     const size = radius * 2;
     this.instance(
@@ -127,15 +145,20 @@ export default class Draw {
       radius,
       color,
       outline,
+      material,
+      params,
+      position.z,
     );
   }
 
-  public static ellipse({
+  public ellipse({
     position,
     size,
     color = COLOR.WHITE,
     rotation = 0,
     outline,
+    material = DEFAULT_MATERIAL,
+    params = NO_PARAMS,
   }: DrawEllipse) {
     this.instance(
       SHAPE_ELLIPSE,
@@ -147,16 +170,22 @@ export default class Draw {
       0,
       color,
       outline,
+      material,
+      params,
+      position.z,
     );
   }
 
-  public static line({
+  public line({
     from,
     to,
     width,
     color = COLOR.WHITE,
     cap = "butt",
     outline,
+    material = DEFAULT_MATERIAL,
+    params = NO_PARAMS,
+    z,
   }: DrawLine) {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
@@ -173,12 +202,16 @@ export default class Draw {
       cap === "round" ? width / 2 : 0,
       color,
       outline,
+      material,
+      params,
+      z,
     );
   }
 
-  public static sprite({
+  public sprite({
     position,
     texture,
+    atlas = this.atlas,
     size,
     crop,
     color = COLOR.WHITE,
@@ -187,8 +220,10 @@ export default class Draw {
     flipY = false,
     rounded = 0,
     outline,
+    material = DEFAULT_MATERIAL,
+    params = NO_PARAMS,
   }: DrawSprite) {
-    const page = AssetManager.getTexture(texture);
+    const page = this.page(texture, atlas);
     const cropX = crop?.x ?? 0;
     const cropY = crop?.y ?? 0;
     const cropWidth = crop?.width ?? page.width;
@@ -204,9 +239,99 @@ export default class Draw {
       rounded,
       color,
       outline,
+      material,
+      params,
+      position.z,
     );
     if (!vert) return;
+    this.writeTexture(
+      vert,
+      page,
+      atlas,
+      cropX,
+      cropY,
+      cropWidth,
+      cropHeight,
+      flipX,
+      flipY,
+    );
+  }
 
+  public quad({
+    points,
+    z,
+    texture,
+    atlas = this.atlas,
+    crop,
+    color = COLOR.WHITE,
+    material = DEFAULT_MATERIAL,
+    params = NO_PARAMS,
+  }: DrawQuad) {
+    const pass = this.target;
+    if (!pass) return this.warnNoTarget();
+    if (color[3] === 0) return;
+    const a = points[0];
+    const b = points[1];
+    const c = points[2];
+    const d = points[3];
+
+    const anchor = pass.sort.anchor;
+    const sortX = (a.x + b.x + c.x + d.x) / 4;
+    const sortY =
+      anchor === "top"
+        ? Math.min(a.y, b.y, c.y, d.y)
+        : anchor === "bottom"
+          ? Math.max(a.y, b.y, c.y, d.y)
+          : (a.y + b.y + c.y + d.y) / 4;
+
+    const vert = pass.instance(color[3] === 255, material, sortX, sortY, z);
+    // quads pack their 4 points into position, size and radius
+    vert.position(a.x, a.y);
+    vert.size(b.x, b.y);
+    vert.radius(c.x, c.y, d.x, d.y);
+    vert.rotation(0);
+    vert.outlineWidth(0);
+    vert.color(color[0], color[1], color[2], color[3]);
+    vert.outlineColor(color[0], color[1], color[2], color[3]);
+    vert.shape(SHAPE_QUAD);
+    vert.params(params[0], params[1], params[2], params[3]);
+
+    if (!texture) {
+      vert.uvRect(0, 0, 1, 1);
+      vert.layer(0);
+      return;
+    }
+    const page = this.page(texture, atlas);
+    this.writeTexture(
+      vert,
+      page,
+      atlas,
+      crop?.x ?? 0,
+      crop?.y ?? 0,
+      crop?.width ?? page.width,
+      crop?.height ?? page.height,
+      false,
+      false,
+    );
+  }
+
+  private page(texture: string, atlas: DrawAtlas) {
+    return atlas === "ui"
+      ? AssetManager.getUITexture(texture)
+      : AssetManager.getTexture(texture);
+  }
+
+  private writeTexture(
+    vert: DrawWriter,
+    page: AtlasPage,
+    atlas: DrawAtlas,
+    cropX: number,
+    cropY: number,
+    cropWidth: number,
+    cropHeight: number,
+    flipX: boolean,
+    flipY: boolean,
+  ) {
     let u = cropX / page.layerWidth;
     let v = cropY / page.layerHeight;
     let uWidth = cropWidth / page.layerWidth;
@@ -220,10 +345,10 @@ export default class Draw {
       vHeight = -vHeight;
     }
     vert.uvRect(u, v, uWidth, vHeight);
-    vert.layer(page.index);
+    vert.layer(atlas === "ui" ? (page.index | UI_ATLAS) >>> 0 : page.index);
   }
 
-  private static instance(
+  private instance(
     shape: number,
     x: number,
     y: number,
@@ -233,6 +358,9 @@ export default class Draw {
     rounded: CornerRadius,
     color: RGBA,
     outline: DrawOutline | undefined,
+    material: Material,
+    params: MaterialParams,
+    z: number,
   ): DrawWriter | null {
     const pass = this.target;
     if (!pass) {
@@ -245,8 +373,19 @@ export default class Draw {
     if (color[3] === 0 && outlineWidth === 0) return null;
     if (width <= 0 || height <= 0) return null;
 
-    // outline is layered over the fill, so only the fill decides
-    const vert = pass.instance(color[3] === 255);
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    const anchor = pass.sort.anchor;
+    let sortY = centerY;
+    if (anchor !== "center") {
+      const extentY =
+        (Math.abs(Math.sin(rotation)) * width +
+          Math.abs(Math.cos(rotation)) * height) /
+        2;
+      sortY = anchor === "top" ? centerY - extentY : centerY + extentY;
+    }
+
+    const vert = pass.instance(color[3] === 255, material, centerX, sortY, z);
     const maxRadius = Math.min(width, height) / 2;
     vert.position(x, y);
     vert.size(width, height);
@@ -274,29 +413,18 @@ export default class Draw {
     // untextured: layer 0 is plain white, sprite overrides both
     vert.uvRect(0, 0, 1, 1);
     vert.layer(0);
-
-    // sort point: center, moved by half of the rotated height
-    const centerX = x + width / 2;
-    const centerY = y + height / 2;
-    const anchor = pass.sort.anchor;
-    if (anchor === "center") {
-      vert.sortPoint(centerX, centerY);
-    } else {
-      const extentY =
-        (Math.abs(Math.sin(rotation)) * width +
-          Math.abs(Math.cos(rotation)) * height) /
-        2;
-      vert.sortPoint(
-        centerX,
-        anchor === "top" ? centerY - extentY : centerY + extentY,
-      );
-    }
+    vert.params(params[0], params[1], params[2], params[3]);
     return vert;
   }
 
-  private static warnNoTarget() {
+  private warnNoTarget() {
     if (this.warned) return;
     this.warned = true;
-    console.warn("Draw called, but there is no DrawPass in the preset");
+    console.warn(`${this.name} called, but there is no pass for it in the preset`);
   }
 }
+
+/** world space, follows the camera, sorted by the URP sort config */
+export const Draw = new DrawApi("Draw", "world");
+/** screen space in canvas pixels, drawn in call order on top of the world */
+export const DrawGui = new DrawApi("DrawGui", "ui");

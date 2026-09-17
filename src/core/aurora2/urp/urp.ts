@@ -3,25 +3,32 @@ import RenderGraph from "../renderGraph";
 import DrawPass from "./passes/draw";
 import PresentPass from "./passes/present";
 
-export type SortMode = "none" | "y";
+export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z";
 export type SortAnchor = "top" | "center" | "bottom";
 export interface URPSortConfig {
-  /**
-   * none: draw order is call order, no depth buffer
-   * y: lower on screen is in front
-   */
   mode: SortMode;
-  /** point of the shape used for sorting, rotation aware */
   anchor: SortAnchor;
-  /** render pixels outside the view that still sort correctly */
-  margin: number;
+  step: { x: number; y: number; z: number };
+  zRange: [number, number];
 }
 export interface URPConfig {
   sort: URPSortConfig;
 }
 
 const BASE_CONFIG: URPConfig = {
-  sort: { mode: "none", anchor: "bottom", margin: 540 },
+  sort: {
+    mode: "none",
+    anchor: "bottom",
+    step: { x: 1, y: 1, z: 1 },
+    zRange: [0, 255],
+  },
+};
+// gui is layered in call order, like an element tree
+const GUI_SORT: URPSortConfig = {
+  mode: "none",
+  anchor: "top",
+  step: { x: 1, y: 1, z: 1 },
+  zRange: [0, 0],
 };
 
 export default class URP {
@@ -34,6 +41,15 @@ export default class URP {
   public static async init(config: DeepPartial<URPConfig> = {}) {
     this.config = deepMerge(structuredClone(BASE_CONFIG), config);
     const { sort } = this.config;
-    await RenderGraph.setPreset(() => [new DrawPass(sort), new PresentPass()]);
+    await RenderGraph.setPreset(() => [
+      new DrawPass({
+        name: "draw",
+        space: "world",
+        target: "offscreenCanvas",
+        sort,
+      }),
+      new DrawPass({ name: "gui", space: "screen", target: "gui", sort: GUI_SORT }),
+      new PresentPass(),
+    ]);
   }
 }
