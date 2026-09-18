@@ -67,13 +67,11 @@ export default class Aurora {
     SharedBinds.init();
     debug.aurora.connect(() => ({
       gpuTime: GpuTimer.getTime,
-      passTimes: GpuTimer.getPassTimes,
-      activePasses: RenderGraph.getActivePassNames,
-      textures: ResourcePool.getTextureCount,
+      steps: GpuTimer.getSteps,
+      activePasses: RenderGraph.getActivePasses,
+      textures: () => RenderGraph.describeResources(),
+      poolTotal: () => ResourcePool.getTextureCount,
     }));
-    debug.aurora.onCollectingChange((collecting) =>
-      GpuTimer.setPerPass(collecting),
-    );
     this.canvasFormat = navigator.gpu.getPreferredCanvasFormat();
     ctx.configure({
       device: this.device,

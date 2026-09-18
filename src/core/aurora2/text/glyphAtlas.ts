@@ -17,20 +17,13 @@ interface Shelf {
   x: number;
 }
 
-/** keeps neighbours from bleeding into each other through filtering */
 const GAP = 1;
 
-/**
- * Shelf packer over a fixed number of pages in the font texture array.
- * Glyphs never move once placed, so their uv stay valid. Every glyph keeps
- * its coverage in alpha and a signed distance field in red, for outlines.
- */
 export default class GlyphAtlas {
   private readonly texture: GPUTexture;
   private readonly firstLayer: number;
   private readonly pages: number;
   private readonly pageSize: number;
-  /** pixels the distance field reaches outside the ink, the widest outline */
   public readonly spread: number;
   private shelves: Shelf[] = [];
   private pageBottom: number[];
@@ -51,15 +44,10 @@ export default class GlyphAtlas {
     this.pageBottom = new Array(pages).fill(0);
   }
 
-  /** empty pixels around the ink of every glyph, room for the distance field */
   public get padding() {
     return this.spread + 1;
   }
 
-  /**
-   * RGBA image of one glyph with padding already around the ink, coverage in
-   * alpha. The distance field is written into it, then it goes to the GPU.
-   */
   public store(
     pixels: Uint8ClampedArray,
     width: number,
@@ -92,16 +80,15 @@ export default class GlyphAtlas {
     };
   }
 
-  /**
-   * a whole atlas made elsewhere (msdf-atlas-gen), copied in as it is:
-   * its channels already hold distances, nothing is computed here
-   */
   public storeBitmap(bitmap: ImageBitmap): AtlasSlot | null {
     const slot = this.allocate(bitmap.width, bitmap.height);
     if (!slot) return null;
     Aurora.device.queue.copyExternalImageToTexture(
       { source: bitmap, origin: { x: 0, y: 0 } },
-      { texture: this.texture, origin: { x: slot.x, y: slot.y, z: slot.layer } },
+      {
+        texture: this.texture,
+        origin: { x: slot.x, y: slot.y, z: slot.layer },
+      },
       { width: bitmap.width, height: bitmap.height },
     );
     return slot;
@@ -114,7 +101,6 @@ export default class GlyphAtlas {
   private allocate(width: number, height: number): AtlasSlot | null {
     const w = width + GAP;
     const h = height + GAP;
-    // tightest shelf that is tall enough, so small glyphs do not waste tall rows
     let best: Shelf | null = null;
     for (const shelf of this.shelves) {
       if (shelf.height < h || shelf.x + w > this.pageSize) continue;

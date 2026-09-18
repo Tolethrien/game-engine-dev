@@ -1,3 +1,7 @@
+import type { Pass } from "@/core/aurora2/pass";
+import type { GraphTexture } from "@/core/aurora2/renderGraph";
+import type { GpuSteps } from "@/core/aurora2/timer";
+
 export interface ILogger {
   log: (data: unknown) => void;
   success: (data: unknown) => void;
@@ -10,14 +14,13 @@ export interface IPerformanceModule {
 }
 export interface AuroraDebugData {
   gpuTime: number | null;
-  passTimes: { name: string; time: number }[];
-  activePasses: string[];
-  textures: number;
+  steps: Readonly<GpuSteps>;
+  activePasses: readonly Pass[];
+  textures: () => GraphTexture[];
+  poolTotal: () => number;
 }
-export type AuroraCounters = () => Record<string, number>;
 export interface IAuroraModule {
   connect(source: () => AuroraDebugData): void;
-  onCollectingChange(callback: (collecting: boolean) => void): void;
   endFrame(): void;
   watchDevice(device: GPUDevice): void;
   watchShader(label: string, module: GPUShaderModule, code: string): void;
@@ -28,8 +31,6 @@ export interface IAuroraModule {
   watchRender(encoder: GPURenderPassEncoder): GPURenderPassEncoder;
   watchCompute(encoder: GPUComputePassEncoder): GPUComputePassEncoder;
   watchClear(): void;
-  connectCounters(name: string, source: AuroraCounters): void;
-  disconnectCounters(name: string, source: AuroraCounters): void;
 }
 export interface IDebug {
   performance: IPerformanceModule;

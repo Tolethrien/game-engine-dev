@@ -54,10 +54,20 @@ Zbiera 30-sekundowe rolling window próbek klatek, raz na sekundę wysyła migaw
 ## `debug.aurora`
 
 ```ts
-debug.aurora.reportGPUData(snapshot); // wołane przez Engine co klatkę
+debug.aurora.connect(() => AuroraDebugData); // raz, w Aurora.init
+debug.aurora.endFrame(); // wołane przez Aurora.endFrame co klatkę
+debug.aurora.watchDevice / watchShader / watchPipeline / watchRender / watchCompute / watchClear
 ```
 
-Wysyła dane GPU/renderu do profilera — raz na sekundę i **tylko gdy okno profilera jest otwarte** (`profilerState.isOpen`).
+Aurora niczego nie liczy sama (poza `GpuTimer`, który jest zawsze). Moduł dev **pobiera** dane przez `connect` i tylko przy otwartym profilerze (`profilerState.isOpen`); przy zamkniętym nie robi nic poza tym sprawdzeniem.
+
+- **Źródło** (`AuroraDebugData`): tanie referencje co klatkę (`gpuTime`, `steps` = `GpuTimer.getSteps`, `activePasses` = obiekty `Pass`) i funkcje wołane tylko przy raporcie (`textures()` = `RenderGraph.describeResources()`, `poolTotal()`).
+- **Czasy GPU**: co klatkę, jeśli `steps.frame` jest nowy, czasy kroków trafiają do akumulatorów per pass (owner) i per label (suma, próbki, max). Przy raporcie: średnie z okna, zerowanie.
+- **Liczniki passów**: opcjonalna metoda `Pass.counters?()`, wołana przy raporcie na aktywnych passach, zapisywana pod `pass.name`.
+- **Błędy**: `uncapturederror` (`gpu`), `device.lost` poza `destroyed` (`lost`), błędy kompilacji shaderów (`shader`) — jedna mapa z licznikiem, w konsoli raz na komunikat.
+- **Raport** (co ~1 s) → `AuroraSnapshot` (`src/types/preload.d.ts`): `gpu {time, timeMax, passes, steps}`, `calls`, `passes`, `geometry` (ostatnia klatka), `counters`, `resources {activePasses, textures, pool}`, `errors`. `gpu.steps` i `errors` są wysyłane, ale profiler ich jeszcze nie wyświetla.
+
+Na prodzie `prodAurora` ma puste `connect`/`endFrame`, więc gettery Aurory zostają w kodzie, ale nikt ich nie woła.
 
 ---
 
@@ -149,13 +159,12 @@ Kod w `src/sandbox/index.ts` swobodnie woła `debug.log.success(...)`, `.error(.
 
 ## Inne rzeczy warte uwagi
 
-1. **Niespójne bramkowanie przez stan profilera.** `AuroraDevModule.reportGPUData` wysyła tylko, gdy `profilerState.isOpen` — `DevPerformance.endFrame` wysyła swoją migawkę **bezwarunkowo**, raz na sekundę, niezależnie od tego, czy profiler jest w ogóle otwarty. Niegroźne (to i tak tylko dev), ale niespójne między dwoma modułami robiącymi analogiczną rzecz.
-2. **Zabłąkany `console.log("sram")`** w `AuroraDevModule.reportGPUData` — wygląda na pozostawiony log z testów, odpala się przy każdej wysłanej migawce GPU (raz na sekundę, gdy profiler otwarty).
-3. **Auto-otwieranie profilera jest powiązane z `!app.isPackaged`, nie z osobną flagą.** To rozsądny domyślny wybór, ale warto pamiętać, że "spakowane" i "chcę widzieć profiler" to formalnie dwa różne pojęcia, które tu są utożsamione na sztywno w `src/backend/main.ts`.
-4. **Konsola profilera to placeholder.** `runCommand` w `src/profiler/index.tsx` tylko odbija wpisany tekst z powrotem do logu — komendy nie trafiają jeszcze do gry.
-5. **Panel Cello (`src/profiler/panels/cello.tsx`) jest statyczny (`live={false}`)** — sam panel istnieje, ale debug audio (widoczne w `todo.md` jako osobny punkt) jeszcze nie jest podłączony.
-6. **`PerformancePanel` nie jest częścią rejestru `PANELS`.** Jest importowany i renderowany wprost w `src/profiler/index.tsx`, więc zawsze siedzi na górze, poza przeciąganą/reorderowalną listą pozostałych paneli.
-7. **`todo.md` w tym folderze to obszerna lista planowanych modułów** (perf-graf per system/faza, GC spikes, kategoryzowany logger, podgląd tekstur/błędów GPU, inspektor Dogma/Pragma, live inspektor scen/aktorów, generyczny "probe/watch" na dowolną wartość, debug inputu, log sesji, komendy konsoli profilera, tracker assetów, debug Cello/Navi/tweenów, snapshoty/dumpy, I/O dysku, nagrywanie) — żaden z tych modułów jeszcze nie istnieje; dzisiejszy realny zakres to `log`/`performance`/`aurora`.
+1. **Niespójne bramkowanie przez stan profilera.** `AuroraDevModule.endFrame` zbiera i wysyła tylko, gdy `profilerState.isOpen` — `DevPerformance.endFrame` wysyła swoją migawkę **bezwarunkowo**, raz na sekundę, niezależnie od tego, czy profiler jest w ogóle otwarty. Niegroźne (to i tak tylko dev), ale niespójne między dwoma modułami robiącymi analogiczną rzecz.
+2. **Auto-otwieranie profilera jest powiązane z `!app.isPackaged`, nie z osobną flagą.** To rozsądny domyślny wybór, ale warto pamiętać, że "spakowane" i "chcę widzieć profiler" to formalnie dwa różne pojęcia, które tu są utożsamione na sztywno w `src/backend/main.ts`.
+3. **Konsola profilera to placeholder.** `runCommand` w `src/profiler/index.tsx` tylko odbija wpisany tekst z powrotem do logu — komendy nie trafiają jeszcze do gry.
+4. **Panel Cello (`src/profiler/panels/cello.tsx`) jest statyczny (`live={false}`)** — sam panel istnieje, ale debug audio (widoczne w `todo.md` jako osobny punkt) jeszcze nie jest podłączony.
+5. **`PerformancePanel` nie jest częścią rejestru `PANELS`.** Jest importowany i renderowany wprost w `src/profiler/index.tsx`, więc zawsze siedzi na górze, poza przeciąganą/reorderowalną listą pozostałych paneli.
+6. **`todo.md` w tym folderze to obszerna lista planowanych modułów** (perf-graf per system/faza, GC spikes, kategoryzowany logger, podgląd tekstur/błędów GPU, inspektor Dogma/Pragma, live inspektor scen/aktorów, generyczny "probe/watch" na dowolną wartość, debug inputu, log sesji, komendy konsoli profilera, tracker assetów, debug Cello/Navi/tweenów, snapshoty/dumpy, I/O dysku, nagrywanie) — żaden z tych modułów jeszcze nie istnieje; dzisiejszy realny zakres to `log`/`performance`/`aurora`.
 
 ## Jak rozszerzać
 

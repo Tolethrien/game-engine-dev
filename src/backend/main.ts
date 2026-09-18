@@ -6,6 +6,7 @@ import { registerDebugIPC } from "./IPC/debug";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) app.quit();
+app.commandLine.appendSwitch("disable-dawn-features", "timestamp_quantization");
 app.on("ready", () => {
   createGameWindow();
   if (!app.isPackaged) {

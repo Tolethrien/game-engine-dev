@@ -2,8 +2,10 @@ import { deepMerge } from "@axiom/utils";
 import RenderGraph from "../renderGraph";
 import DrawPass from "./passes/draw";
 import PresentPass from "./passes/present";
+import PreviewPass from "./passes/preview";
+import { Draw, DrawGui } from "./draw";
 
-export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z";
+export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z" | "gx+gy+z";
 export type SortAnchor = "top" | "center" | "bottom";
 export interface URPSortConfig {
   mode: SortMode;
@@ -47,9 +49,22 @@ export default class URP {
         space: "world",
         target: "offscreenCanvas",
         sort,
+        api: Draw,
       }),
-      new DrawPass({ name: "gui", space: "screen", target: "gui", sort: GUI_SORT }),
+      new DrawPass({
+        name: "gui",
+        space: "screen",
+        target: "gui",
+        sort: GUI_SORT,
+        api: DrawGui,
+      }),
       new PresentPass(),
+      new PreviewPass({ texture: "canvas" }),
     ]);
+  }
+
+  public static beginFrame() {
+    Draw.beginFrame();
+    DrawGui.beginFrame();
   }
 }

@@ -1,9 +1,5 @@
-import { Collector, Signal } from "@axiom/events";
-import {
-  AuroraCounters,
-  AuroraDebugData,
-  IAuroraModule,
-} from "../interfaces";
+import type { GpuSteps } from "@/core/aurora2/timer";
+import { AuroraDebugData, IAuroraModule } from "../interfaces";
 import { profilerState } from "../profilerState";
 
 const REPORT_INTERVAL_MS = 1000;
@@ -18,16 +14,33 @@ interface FrameCounts {
   vertices: number;
   triangles: number;
 }
+interface TimeAccumulator {
+  sum: number;
+  samples: number;
+  max: number;
+  frameTime: number;
+}
+interface StepAccumulator {
+  owner: string;
+  sum: number;
+  samples: number;
+}
+
+const createTimeAccumulator = (): TimeAccumulator => ({
+  sum: 0,
+  samples: 0,
+  max: 0,
+  frameTime: 0,
+});
+const roundMs = (ms: number) => Math.round(ms * 1000) / 1000;
 
 export class AuroraDevModule implements IAuroraModule {
   private lastReport = 0;
   private collecting = false;
-  private collector = new Collector<AuroraDebugData>();
-  private collectingChanged = new Signal<boolean>();
-  private gpuErrors: Map<string, number> = new Map();
+  private source: (() => AuroraDebugData) | null = null;
+  private errors: Map<string, AuroraError> = new Map();
   private topologies: WeakMap<GPURenderPipeline, GPUPrimitiveTopology> =
     new WeakMap();
-  private counters: Map<string, AuroraCounters> = new Map();
   private frame: FrameCounts = {
     drawCalls: 0,
     computeCalls: 0,
@@ -38,23 +51,30 @@ export class AuroraDevModule implements IAuroraModule {
     vertices: 0,
     triangles: 0,
   };
+  private gpu = {
+    readFrame: -1,
+    total: createTimeAccumulator(),
+    passes: new Map<string, TimeAccumulator>(),
+    // passes seen in the frame being accumulated, reused to avoid per-frame allocation
+    framePasses: [] as TimeAccumulator[],
+    steps: new Map<string, StepAccumulator>(),
+  };
 
   public connect(source: () => AuroraDebugData) {
-    this.collector.connect(source);
+    this.source = source;
   }
 
   public watchDevice(device: GPUDevice) {
     device.lost.then((info) => {
       if (info.reason === "destroyed") return;
+      this.recordError("lost", info.message);
       console.error(`[Aurora] GPU device lost: ${info.message}`);
     });
 
     device.addEventListener("uncapturederror", (event) => {
       event.preventDefault();
       const message = event.error.message;
-      const count = this.gpuErrors.get(message) ?? 0;
-      this.gpuErrors.set(message, count + 1);
-      if (count > 0) return;
+      if (this.recordError("gpu", message) > 1) return;
       console.error(`[Aurora] WebGPU error (reported once):\n${message}`);
     });
   }
@@ -66,8 +86,10 @@ export class AuroraDevModule implements IAuroraModule {
         const line = lines[msg.lineNum - 1] ?? "";
         const caret = " ".repeat(Math.max(0, msg.linePos - 1)) + "^";
         const text = `[${label}] ${msg.type} at ${msg.lineNum}:${msg.linePos}: ${msg.message}\n${line}\n${caret}`;
-        if (msg.type === "error") console.error(text);
-        else if (msg.type === "warning") console.warn(text);
+        if (msg.type === "error") {
+          this.recordError("shader", text);
+          console.error(text);
+        } else if (msg.type === "warning") console.warn(text);
         else console.info(text);
       }
     });
@@ -153,59 +175,130 @@ export class AuroraDevModule implements IAuroraModule {
     if (this.collecting) this.frame.clearPasses++;
   }
 
-  public connectCounters(name: string, source: AuroraCounters) {
-    this.counters.set(name, source);
-  }
-  public disconnectCounters(name: string, source: AuroraCounters) {
-    if (this.counters.get(name) === source) this.counters.delete(name);
-  }
-
-  public onCollectingChange(callback: (collecting: boolean) => void) {
-    this.collectingChanged.connect(callback);
-    callback(this.collecting);
-  }
-
   public endFrame() {
-    const open = profilerState.isOpen;
-    if (open !== this.collecting) {
-      this.collecting = open;
-      this.collectingChanged.emit(open);
+    if (!profilerState.isOpen) {
+      if (this.collecting) {
+        this.resetGpu();
+        this.resetFrame();
+      }
+      this.collecting = false;
+      return;
     }
-    if (open) this.report();
+    // counts of the frame that just ended were not collected, wait a full window
+    if (!this.collecting) this.lastReport = performance.now();
+    this.collecting = true;
+
+    const data = this.source?.();
+    if (data) {
+      this.accumulateGpu(data.steps);
+      this.report(data);
+    }
     this.resetFrame();
   }
 
-  private report() {
+  private accumulateGpu(steps: Readonly<GpuSteps>) {
+    const gpu = this.gpu;
+    if (steps.frame <= gpu.readFrame) return;
+    gpu.readFrame = steps.frame;
+
+    let total = 0;
+    for (let i = 0; i < steps.count; i++) {
+      const time = steps.times[i];
+      const owner = steps.owners[i];
+      const label = steps.labels[i];
+      total += time;
+
+      let pass = gpu.passes.get(owner);
+      if (!pass) gpu.passes.set(owner, (pass = createTimeAccumulator()));
+      if (!gpu.framePasses.includes(pass)) gpu.framePasses.push(pass);
+      pass.frameTime += time;
+
+      let step = gpu.steps.get(label);
+      if (!step) gpu.steps.set(label, (step = { owner, sum: 0, samples: 0 }));
+      step.sum += time;
+      step.samples++;
+    }
+
+    for (const pass of gpu.framePasses) {
+      this.addSample(pass, pass.frameTime);
+      pass.frameTime = 0;
+    }
+    gpu.framePasses.length = 0;
+    this.addSample(gpu.total, total);
+  }
+
+  private report(data: AuroraDebugData) {
     const now = performance.now();
     if (now - this.lastReport < REPORT_INTERVAL_MS) return;
     this.lastReport = now;
 
     const frame = this.frame;
+    const gpu = this.gpu;
     const counters: Record<string, Record<string, number>> = {};
-    this.counters.forEach((source, name) => (counters[name] = source()));
+    for (const pass of data.activePasses) {
+      if (pass.counters) counters[pass.name] = pass.counters();
+    }
 
-    for (const data of this.collector.collect()) {
-      window.API.DEBUG.sendAuroraSnapshot({
-        GPUTime: data.gpuTime ?? 0,
-        CPUTime: 0,
-        pipelineTimes: data.passTimes.map((pass) => ({
-          name: pass.name,
-          time: Number(pass.time.toFixed(3)),
-        })),
-        pipelineInUse: data.activePasses,
-        drawCalls: frame.drawCalls,
-        computeCalls: frame.computeCalls,
-        totalCalls: frame.drawCalls + frame.computeCalls,
-        renderPasses: frame.renderPasses,
-        computePasses: frame.computePasses,
-        clearPasses: frame.clearPasses,
+    const passes: AuroraPassTime[] = [];
+    gpu.passes.forEach((pass, name) =>
+      passes.push({
+        name,
+        time: roundMs(pass.sum / pass.samples),
+        max: roundMs(pass.max),
+      }),
+    );
+    const steps: AuroraStepTime[] = [];
+    gpu.steps.forEach((step, label) =>
+      steps.push({
+        owner: step.owner,
+        label,
+        time: roundMs(step.sum / step.samples),
+      }),
+    );
+    const total = gpu.total;
+
+    window.API.DEBUG.sendAuroraSnapshot({
+      gpu: {
+        time: roundMs(
+          total.samples > 0 ? total.sum / total.samples : (data.gpuTime ?? 0),
+        ),
+        timeMax: roundMs(total.max),
+        passes,
+        steps,
+      },
+      calls: { draw: frame.drawCalls, compute: frame.computeCalls },
+      passes: {
+        render: frame.renderPasses,
+        compute: frame.computePasses,
+        clear: frame.clearPasses,
+      },
+      geometry: {
         instances: frame.instances,
         vertices: frame.vertices,
         triangles: frame.triangles,
-        textures: data.textures,
-        counters,
-      });
-    }
+      },
+      counters,
+      resources: {
+        activePasses: data.activePasses.map((pass) => pass.name),
+        textures: data.textures(),
+        pool: { total: data.poolTotal() },
+      },
+      errors: [...this.errors.values()],
+    });
+    this.resetGpu();
+  }
+
+  private addSample(accumulator: TimeAccumulator, time: number) {
+    accumulator.sum += time;
+    accumulator.samples++;
+    if (time > accumulator.max) accumulator.max = time;
+  }
+
+  private recordError(type: AuroraError["type"], message: string) {
+    const key = `${type}|${message}`;
+    let error = this.errors.get(key);
+    if (!error) this.errors.set(key, (error = { type, message, count: 0 }));
+    return ++error.count;
   }
 
   private countDraw(
@@ -224,6 +317,18 @@ export class AuroraDevModule implements IAuroraModule {
     }
   }
 
+  // passes and labels are rebuilt each window, so the report keeps execution order
+  private resetGpu() {
+    const gpu = this.gpu;
+    gpu.passes.clear();
+    gpu.steps.clear();
+    gpu.framePasses.length = 0;
+    const total = gpu.total;
+    total.sum = 0;
+    total.samples = 0;
+    total.max = 0;
+  }
+
   private resetFrame() {
     const frame = this.frame;
     frame.drawCalls = 0;
@@ -239,7 +344,6 @@ export class AuroraDevModule implements IAuroraModule {
 
 export const prodAurora: IAuroraModule = {
   connect: () => {},
-  onCollectingChange: () => {},
   endFrame: () => {},
   watchDevice: () => {},
   watchShader: () => {},
@@ -247,6 +351,4 @@ export const prodAurora: IAuroraModule = {
   watchRender: (encoder) => encoder,
   watchCompute: (encoder) => encoder,
   watchClear: () => {},
-  connectCounters: () => {},
-  disconnectCounters: () => {},
 };

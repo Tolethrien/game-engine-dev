@@ -1,22 +1,13 @@
 const FAR = 1e20;
 
-/**
- * Signed distance field of a glyph mask, exact euclidean transform
- * (Felzenszwalb and Huttenlocher), linear in the number of pixels.
- */
 export default class DistanceField {
   private static outside = new Float64Array(0);
   private static inside = new Float64Array(0);
-  // 1D transform scratch, sized to the longer side
   private static f = new Float64Array(0);
   private static d = new Float64Array(0);
   private static v = new Int32Array(0);
   private static z = new Float64Array(0);
 
-  /**
-   * RGBA in, coverage in alpha. Writes the distance into red: 0.5 on the edge,
-   * 1 at spread pixels inside, 0 at spread pixels outside. Green and blue go white.
-   */
   public static encode(
     pixels: Uint8ClampedArray,
     width: number,
@@ -66,7 +57,6 @@ export default class DistanceField {
     }
   }
 
-  /** squared distances in place: columns first, then rows */
   private static transform(grid: Float64Array, width: number, height: number) {
     const f = this.f;
     const d = this.d;
@@ -83,7 +73,6 @@ export default class DistanceField {
     }
   }
 
-  /** lower envelope of parabolas over f, result in d */
   private static transform1D(length: number) {
     const { f, d, v, z } = this;
     let k = 0;

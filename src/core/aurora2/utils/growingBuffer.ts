@@ -13,9 +13,9 @@ const SHRINK_RATIO = 4;
 const SHRINK_FRAMES = 300;
 
 export default class GrowingBuffer {
-  private floats: Float32Array;
-  private uints: Uint32Array;
-  private bytes: Uint8Array;
+  private floats!: Float32Array;
+  private uints!: Uint32Array;
+  private bytes!: Uint8Array;
   private buffer: GPUBuffer;
   private readonly label: string;
   private readonly stride: number;
@@ -38,10 +38,7 @@ export default class GrowingBuffer {
     this.usage = usage | GPUBufferUsage.COPY_DST;
     this.minCapacity = Math.max(1, capacity);
     this.capacity = this.minCapacity;
-    const data = new ArrayBuffer(this.capacity * stride * WORD);
-    this.floats = new Float32Array(data);
-    this.uints = new Uint32Array(data);
-    this.bytes = new Uint8Array(data);
+    this.reallocate();
     this.gpuCapacity = this.capacity;
     this.buffer = this.createGPUBuffer();
   }
@@ -65,36 +62,12 @@ export default class GrowingBuffer {
     return this.stride;
   }
 
-  public begin(count: number) {
+  public reserve(count: number) {
     this.count = count;
-    let target = this.capacity;
-
     if (count > this.capacity) {
-      target = 2 ** Math.ceil(Math.log2(count));
-      this.lowFrames = 0;
-      this.peak = 0;
-    } else if (count * SHRINK_RATIO > this.capacity) {
-      this.lowFrames = 0;
-      this.peak = 0;
-    } else {
-      this.peak = Math.max(this.peak, count);
-      this.lowFrames++;
-      if (this.lowFrames >= SHRINK_FRAMES) {
-        target = Math.max(
-          this.minCapacity,
-          2 ** Math.ceil(Math.log2(Math.max(1, this.peak))),
-        );
-        this.lowFrames = 0;
-        this.peak = 0;
-      }
+      this.capacity = 2 ** Math.ceil(Math.log2(count));
+      this.reallocate();
     }
-
-    if (target === this.capacity) return;
-    this.capacity = target;
-    const data = new ArrayBuffer(this.capacity * this.stride * WORD);
-    this.floats = new Float32Array(data);
-    this.uints = new Uint32Array(data);
-    this.bytes = new Uint8Array(data);
   }
 
   public push() {
@@ -103,7 +76,7 @@ export default class GrowingBuffer {
   }
 
   public clear() {
-    this.begin(this.count);
+    this.fitCapacity();
     this.count = 0;
   }
 
@@ -127,13 +100,45 @@ export default class GrowingBuffer {
     this.buffer.destroy();
   }
 
-  private resize(capacity: number) {
-    const data = new ArrayBuffer(capacity * this.stride * WORD);
-    new Uint8Array(data).set(this.bytes);
-    this.capacity = capacity;
+  // grows/shrinks toward how full the buffer actually was, drops old contents
+  private fitCapacity() {
+    const count = this.count;
+    let target = this.capacity;
+
+    if (count * SHRINK_RATIO > this.capacity) {
+      this.lowFrames = 0;
+      this.peak = 0;
+    } else {
+      this.peak = Math.max(this.peak, count);
+      this.lowFrames++;
+      if (this.lowFrames >= SHRINK_FRAMES) {
+        target = Math.max(
+          this.minCapacity,
+          2 ** Math.ceil(Math.log2(Math.max(1, this.peak))),
+        );
+        this.lowFrames = 0;
+        this.peak = 0;
+      }
+    }
+
+    if (target === this.capacity) return;
+    this.capacity = target;
+    this.reallocate();
+  }
+
+  private reallocate() {
+    const data = new ArrayBuffer(this.capacity * this.stride * WORD);
     this.floats = new Float32Array(data);
     this.uints = new Uint32Array(data);
     this.bytes = new Uint8Array(data);
+  }
+
+  // grows in place, keeping existing instances (push must not drop live data)
+  private resize(capacity: number) {
+    const old = this.bytes;
+    this.capacity = capacity;
+    this.reallocate();
+    this.bytes.set(old);
   }
 
   private createGPUBuffer() {

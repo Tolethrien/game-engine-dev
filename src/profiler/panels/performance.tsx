@@ -82,23 +82,31 @@ export default function PerformancePanel() {
         <Slot id="gpu">
           <Stat
             label="GPU Time"
-            value={`${GPULatest()?.GPUTime.toFixed(2) ?? "—"} ms`}
+            value={`${GPULatest()?.gpu.time.toFixed(2) ?? "—"} ms`}
+          />
+        </Slot>
+        <Slot id="gpuMax">
+          <Stat
+            label="GPU Max"
+            value={`${GPULatest()?.gpu.timeMax.toFixed(2) ?? "—"} ms`}
           />
         </Slot>
       </SlotGroup>
-      <Section>Pipeline times</Section>
-      <Slot align="center">
-        <Table columns="1fr auto">
+      <Section>Pass times</Section>
+      <Slot pinnable={false} align="center">
+        <Table columns="1fr auto auto">
           <TableRow head>
-            <TableCell>Pipeline</TableCell>
-            <TableCell align="right">Time</TableCell>
+            <TableCell>Pass</TableCell>
+            <TableCell align="right">Avg</TableCell>
+            <TableCell align="right">Max</TableCell>
           </TableRow>
 
-          <For each={GPULatest()?.pipelineTimes ?? []}>
+          <For each={GPULatest()?.gpu.passes ?? []}>
             {(entry) => (
               <TableRow>
                 <TableCell>{entry.name}</TableCell>
-                <TableCell align="right">{entry.time} ms</TableCell>
+                <TableCell align="right">{entry.time.toFixed(3)} ms</TableCell>
+                <TableCell align="right">{entry.max.toFixed(3)} ms</TableCell>
               </TableRow>
             )}
           </For>

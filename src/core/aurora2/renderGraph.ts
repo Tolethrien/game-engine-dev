@@ -1,6 +1,6 @@
 import { assert } from "@axiom/utils";
 import { debug } from "@debug";
-import AssetManager from "./assetManager";
+import AssetManager, { AssetName } from "./assetManager";
 import Aurora from "./core";
 import {
   MultiPassContext,
@@ -18,6 +18,18 @@ import ResourcePool, {
 import SharedBinds from "./sharedBinds";
 import GpuTimer from "./timer";
 
+export interface GraphTexture {
+  name: string;
+  kind: "graph" | "temp" | "asset";
+  format: GPUTextureFormat;
+  width: number;
+  height: number;
+  mips: number;
+  layers: number;
+  createdBy: string;
+  usedBy: string[];
+}
+
 export default class RenderGraph {
   private static passes: Pass[] = [];
   private static built = false;
@@ -32,8 +44,76 @@ export default class RenderGraph {
   private static lastUse: Map<string, number> = new Map();
   private static frameWritten: Set<string> = new Set();
 
-  public static get getActivePassNames() {
-    return this.activePasses.map((pass) => pass.name);
+  public static get getActivePasses(): readonly Pass[] {
+    return this.activePasses;
+  }
+  // derived from declarations of the current frame, so execute() records nothing extra
+  public static describeResources(): GraphTexture[] {
+    const textures: Map<string, GraphTexture> = new Map();
+    const assets: Map<AssetName, GraphTexture> = new Map();
+    const use = (texture: GraphTexture | undefined, pass: string) => {
+      if (texture && !texture.usedBy.includes(pass)) texture.usedBy.push(pass);
+    };
+
+    for (const pass of this.activePasses) {
+      const declared = this.resources.get(pass)!;
+      for (const write of declared.writes) {
+        if (write.loadOp === "load" || textures.has(write.name)) {
+          use(textures.get(write.name), pass.name);
+          continue;
+        }
+        textures.set(
+          write.name,
+          this.describeTexture(write.name, "graph", write.desc, pass.name),
+        );
+      }
+      for (const name of declared.reads) use(textures.get(name), pass.name);
+      for (const name of declared.modifies) use(textures.get(name), pass.name);
+      for (const temp of declared.temps) {
+        textures.set(
+          temp.key,
+          this.describeTexture(temp.key, "temp", temp.desc, pass.name),
+        );
+      }
+      for (const name of declared.assets) {
+        if (!assets.has(name)) {
+          const texture = AssetManager.getAssetTexture(name);
+          if (!texture) continue;
+          assets.set(name, {
+            name,
+            kind: "asset",
+            format: texture.format,
+            width: texture.width,
+            height: texture.height,
+            mips: texture.mipLevelCount,
+            layers: texture.depthOrArrayLayers,
+            createdBy: "assets",
+            usedBy: [],
+          });
+        }
+        use(assets.get(name), pass.name);
+      }
+    }
+    return [...textures.values(), ...assets.values()];
+  }
+  private static describeTexture(
+    name: string,
+    kind: GraphTexture["kind"],
+    desc: TextureDescriptor,
+    createdBy: string,
+  ): GraphTexture {
+    const { width, height } = ResourcePool.resolveSize(desc.size);
+    return {
+      name,
+      kind,
+      format: desc.format,
+      width,
+      height,
+      mips: desc.mips ?? 1,
+      layers: desc.layers ?? 1,
+      createdBy,
+      usedBy: [],
+    };
   }
   public static get isBuilt() {
     return this.built;
@@ -95,8 +175,11 @@ export default class RenderGraph {
 
     await Promise.all(passes.map((pass) => pass.setup(targets.get(pass)!)));
 
+    // a preset may return the same pass instance in every build, destroy only what leaves the graph
     if (id !== this.buildId) {
-      for (const pass of passes) pass.destroy();
+      for (const pass of passes) {
+        if (!this.passes.includes(pass)) pass.destroy();
+      }
       return;
     }
 
@@ -104,9 +187,13 @@ export default class RenderGraph {
     this.resources = resources;
     this.contexts = contexts;
     this.previousActive = [];
+    // old passes have no declarations in the new maps, next resolveFrame fills this again
+    this.activePasses.length = 0;
     this.passes = passes;
     SharedBinds.clearFrameDirty();
-    for (const pass of oldPasses) pass.destroy();
+    for (const pass of oldPasses) {
+      if (!passes.includes(pass)) pass.destroy();
+    }
   }
   public static async setPreset(preset: () => Pass[]) {
     this.preset = preset;
@@ -248,7 +335,7 @@ export default class RenderGraph {
     const computePass = debug.aurora.watchCompute(
       encoder.beginComputePass({
         label: pass.name,
-        timestampWrites: GpuTimer.stepWrites(),
+        timestampWrites: GpuTimer.stepWrites(pass.name),
       }),
     );
     computePass.setBindGroup(0, SharedBinds.getFrame);
@@ -329,7 +416,7 @@ export default class RenderGraph {
         label: pass.name,
         colorAttachments,
         depthStencilAttachment,
-        timestampWrites: GpuTimer.stepWrites(),
+        timestampWrites: GpuTimer.stepWrites(pass.name),
       }),
     );
     renderPass.setBindGroup(0, SharedBinds.getFrame);
@@ -559,7 +646,7 @@ export default class RenderGraph {
         label,
         colorAttachments: [],
         depthStencilAttachment,
-        timestampWrites: GpuTimer.stepWrites(),
+        timestampWrites: GpuTimer.stepWrites(label),
       })
       .end();
   }
@@ -584,7 +671,7 @@ export default class RenderGraph {
               storeOp: "store",
             },
           ],
-          timestampWrites: GpuTimer.stepWrites(),
+          timestampWrites: GpuTimer.stepWrites(mipLabel),
         })
         .end();
     }

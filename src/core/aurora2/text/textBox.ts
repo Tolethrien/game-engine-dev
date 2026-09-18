@@ -1,43 +1,32 @@
-import AssetManager from "../assetManager";
-import Font, { FontData, Glyph } from "./font";
-import TextLayout, { NEWLINE, SPACE } from "./textLayout";
+import AssetManager, { DEFAULT_FONT_NAME } from "../assetManager";
+import Font, { FontData } from "./font";
+import TextLayout, { CHAR } from "./textLayout";
+import TextRun from "./textRun";
 
-/** row: lines flow sideways and wrap on width, col: columns flow down and wrap on height */
 export type TextDirection = "row" | "col";
-/** along the flow: row horizontally, col vertically */
 export type TextAlign = "start" | "center" | "end" | "justify";
-/** the whole block across the flow: row vertically, col horizontally */
 export type TextAlignCross = "start" | "center" | "end";
-/** what happens when the text does not fit the limit across the flow */
 export type TextOverflow = "visible" | "ellipsis" | "fit" | "tail";
 
 export interface TextBoxOptions {
-  font: string;
+  font?: string;
   text: string;
-  /** pixels, defaults to the native font size */
   size?: number;
   direction: TextDirection;
-  /** row: wraps lines, col: limits columns */
   width?: number;
-  /** row: limits lines, col: wraps columns */
   height?: number;
   align: TextAlign;
   alignCross: TextAlignCross;
-  /** row only: where the last line of a justified paragraph goes */
   justifyLast: TextAlignCross;
-  /** pixels between lines (row) or columns (col), at the requested size */
   lineGap: number;
-  /** row only: pixels added between letters at the requested size, negative packs them */
   letterSpacing: number;
-  /** checked against the limits that are set, without them the text just grows */
   overflow: TextOverflow;
-  /** false keeps every line whole, only "\n" breaks it: fit shrinks it, ellipsis cuts it */
   wrap: boolean;
-  /** smallest size "fit" may shrink to */
   minSize: number;
 }
 
-const DEFAULTS: Omit<TextBoxOptions, "font"> = {
+const DEFAULTS: TextBoxOptions = {
+  font: DEFAULT_FONT_NAME,
   text: "",
   direction: "row",
   align: "start",
@@ -53,11 +42,6 @@ const ELLIPSIS = [0x2026];
 const DOTS = [46, 46, 46];
 const FIT_STEPS = 10;
 
-/**
- * Text laid out inside a box. Holds only what changes the layout and lays out
- * again lazily, after a change or when fonts are reloaded. Position, color and
- * scale come with every draw, so moving or animating it costs nothing.
- */
 export default class TextBox {
   private options: TextBoxOptions;
   private dirty = true;
@@ -65,7 +49,6 @@ export default class TextBox {
   private codes: number[] = [];
   private codesText: string | null = null;
 
-  // lines (row) or columns (col): code ranges, extent in pixels (row) or rows (col)
   private lineStart: number[] = [];
   private lineEnd: number[] = [];
   private lineExtent: number[] = [];
@@ -73,13 +56,9 @@ export default class TextBox {
   private lineEllipsis: boolean[] = [];
   private columnWidth = 0;
 
-  private glyphs: Glyph[] = [];
-  // top left corner of every glyph quad, x y pairs in box pixels
-  private positions: number[] = [];
-  private glyphScale = 1;
-  private size: Size2D = { width: 0, height: 0 };
+  private run = new TextRun();
 
-  constructor(options: Partial<TextBoxOptions> & { font: string }) {
+  constructor(options: Partial<TextBoxOptions> = {}) {
     this.options = { ...DEFAULTS, ...options };
   }
 
@@ -94,28 +73,13 @@ export default class TextBox {
   public get getOptions(): Readonly<TextBoxOptions> {
     return this.options;
   }
-  /** limits where set, the laid out text on the free axes */
   public get getSize(): Readonly<Size2D> {
     this.update();
-    return this.size;
+    return this.run.size;
   }
-  public get getGlyphCount() {
+  public get getRun(): Readonly<TextRun> {
     this.update();
-    return this.glyphs.length;
-  }
-  /** multiplies glyph sizes, differs from the font when "fit" shrinks the text */
-  public get getGlyphScale() {
-    this.update();
-    return this.glyphScale;
-  }
-  public getGlyph(index: number) {
-    return this.glyphs[index];
-  }
-  public getX(index: number) {
-    return this.positions[index * 2];
-  }
-  public getY(index: number) {
-    return this.positions[index * 2 + 1];
+    return this.run;
   }
 
   private update() {
@@ -144,12 +108,10 @@ export default class TextBox {
     this.place(font, size, requested);
   }
 
-  /** dynamic fonts come per whole pixel size, others scale freely */
   private fontAt(size: number | undefined) {
-    return AssetManager.getFont(this.options.font, size);
+    return AssetManager.getFont(this.options.font!, size);
   }
 
-  /** binary search for the largest size that still fits */
   private fitSize(wholePixels: boolean, requested: number) {
     const smallest = Math.min(this.options.minSize, requested);
     if (!wholePixels) {
@@ -164,7 +126,6 @@ export default class TextBox {
       }
       return low;
     }
-    // every probed size is a font of its own, so probe whole pixels only
     let low = Math.max(1, Math.ceil(smallest));
     let high = requested - 1;
     let best = low;
@@ -197,14 +158,12 @@ export default class TextBox {
     return TextLayout.advance(font, code) * scale;
   }
   private ellipsisCodes(font: FontData) {
-    // dynamic fonts can draw any character, the browser falls back for them
     if (font.type === "dynamic") return ELLIPSIS;
     return font.glyphs.has(ELLIPSIS[0]) ? ELLIPSIS : DOTS;
   }
   private isRow() {
     return this.options.direction === "row";
   }
-  /** lines (row) or rows in a column (col) that fit the limit, Infinity without it */
   private capacity(limit: number | undefined, step: number, gap: number) {
     if (limit === undefined) return Infinity;
     return Math.max(1, Math.floor((limit + gap) / step));
@@ -229,7 +188,6 @@ export default class TextBox {
       );
       return;
     }
-    // a column measures in rows, every character and every space takes one
     const rows = this.capacity(
       this.options.height,
       this.step(font, size, requested),
@@ -239,22 +197,20 @@ export default class TextBox {
 
     let widest = 0;
     for (const code of this.codes) {
-      if (code === SPACE || code === NEWLINE) continue;
+      if (code === CHAR.SPACE || code === CHAR.NEWLINE) continue;
       widest = Math.max(widest, this.advance(font, code, scale));
     }
     this.columnWidth = widest;
   }
 
-  /** greedy word wrap, a word longer than the limit stays whole and overflows */
   private wrapWords(
     limit: number | undefined,
     measure: (code: number) => number,
-    // spacing measured after the last letter of a line, which is not there
     trailing: number,
   ) {
     const codes = this.codes;
     const count = codes.length;
-    const space = measure(SPACE);
+    const space = measure(CHAR.SPACE);
     let start = 0;
     let end = 0;
     let extent = 0;
@@ -262,7 +218,7 @@ export default class TextBox {
     let i = 0;
 
     while (i <= count) {
-      if (i === count || codes[i] === NEWLINE) {
+      if (i === count || codes[i] === CHAR.NEWLINE) {
         this.pushLine(
           start,
           hasWord ? end : start,
@@ -275,14 +231,18 @@ export default class TextBox {
         hasWord = false;
         continue;
       }
-      if (codes[i] === SPACE) {
+      if (codes[i] === CHAR.SPACE) {
         i++;
         continue;
       }
 
       const wordStart = i;
       let word = 0;
-      while (i < count && codes[i] !== SPACE && codes[i] !== NEWLINE) {
+      while (
+        i < count &&
+        codes[i] !== CHAR.SPACE &&
+        codes[i] !== CHAR.NEWLINE
+      ) {
         word += measure(codes[i]);
         i++;
       }
@@ -381,7 +341,6 @@ export default class TextBox {
       this.lineEllipsis.length = max;
       this.trimLine(max - 1, lineLimit, ellipsis, measure);
     }
-    // unwrapped lines can run past the limit on their own
     if (wrap || lineLimit === undefined) return;
     for (let line = 0; line < this.lineStart.length; line++) {
       if (this.lineEllipsis[line] || this.lineExtent[line] <= lineLimit)
@@ -390,7 +349,6 @@ export default class TextBox {
     }
   }
 
-  /** cuts the line until the ellipsis fits after it */
   private trimLine(
     line: number,
     limit: number | undefined,
@@ -406,9 +364,9 @@ export default class TextBox {
         extent -= measure(this.codes[end]);
       }
     }
-    while (end > start && this.codes[end - 1] === SPACE) {
+    while (end > start && this.codes[end - 1] === CHAR.SPACE) {
       end--;
-      extent -= measure(SPACE);
+      extent -= measure(CHAR.SPACE);
     }
     this.lineEnd[line] = end;
     this.lineExtent[line] = extent + ellipsis;
@@ -418,9 +376,7 @@ export default class TextBox {
   //=============================== placing
 
   private place(font: FontData, size: number, requested: number) {
-    this.glyphs.length = 0;
-    this.positions.length = 0;
-    this.glyphScale = size / font.size;
+    this.run.reset(size / font.size);
     if (this.isRow()) this.placeRows(font, size, requested);
     else this.placeColumns(font, size, requested);
   }
@@ -433,12 +389,11 @@ export default class TextBox {
 
   private placeRows(font: FontData, size: number, requested: number) {
     const { width, height, align, alignCross, justifyLast } = this.options;
-    const scale = this.glyphScale;
+    const scale = this.run.glyphScale;
     const gap = this.gap(size, requested);
     const step = this.step(font, size, requested);
-    // letter spacing goes after every character, spaces included
     const spacing = this.spacing(size, requested);
-    const space = this.advance(font, SPACE, scale) + spacing;
+    const space = this.advance(font, CHAR.SPACE, scale) + spacing;
     const count = this.lineStart.length;
 
     let widest = 0;
@@ -453,40 +408,41 @@ export default class TextBox {
       const end = this.lineEnd[line];
       const free = boxWidth - this.lineExtent[line];
 
-      // justify stretches spaces, except the last line of a paragraph
       let extra = 0;
       let pen = this.offset(free, align);
-      // the last line of a paragraph is not stretched, justifyLast places it
       if (align === "justify" && this.lineBreak[line]) {
         pen = this.offset(free, justifyLast);
       }
       if (align === "justify" && !this.lineBreak[line] && free > 0) {
         let spaces = 0;
-        for (let i = start; i < end; i++) if (this.codes[i] === SPACE) spaces++;
+        for (let i = start; i < end; i++)
+          if (this.codes[i] === CHAR.SPACE) spaces++;
         if (spaces > 0) extra = free / spaces;
       }
 
       const baseline = top + line * step + font.ascender * scale;
       for (let i = start; i < end; i++) {
         const code = this.codes[i];
-        if (code === SPACE) {
+        if (code === CHAR.SPACE) {
           pen += space + extra;
           continue;
         }
-        pen += this.pushGlyph(font, code, pen, baseline, scale) + spacing;
+        pen +=
+          this.run.place(TextLayout.glyph(font, code), pen, baseline) + spacing;
       }
       if (!this.lineEllipsis[line]) continue;
       for (const code of this.ellipsisCodes(font)) {
-        pen += this.pushGlyph(font, code, pen, baseline, scale) + spacing;
+        pen +=
+          this.run.place(TextLayout.glyph(font, code), pen, baseline) + spacing;
       }
     }
-    this.size.width = boxWidth;
-    this.size.height = boxHeight;
+    this.run.size.width = boxWidth;
+    this.run.size.height = boxHeight;
   }
 
   private placeColumns(font: FontData, size: number, requested: number) {
     const { width, height, align, alignCross } = this.options;
-    const scale = this.glyphScale;
+    const scale = this.run.glyphScale;
     const gap = this.gap(size, requested);
     const step = this.step(font, size, requested);
     const columnStep = this.columnWidth + gap;
@@ -504,47 +460,35 @@ export default class TextBox {
       const x = left + column * columnStep;
       const used = Math.max(0, this.lineExtent[column] * step - gap);
       const top = this.offset(boxHeight - used, align);
+      const baseline = top + font.ascender * scale;
       let row = 0;
-      const place = (code: number) => {
-        // glyphs are centered in the column, narrow letters do not hug its left edge
-        const glyph = TextLayout.glyph(font, code);
-        const pen = x + (this.columnWidth - glyph.advance * scale) / 2;
-        this.pushGlyph(
-          font,
-          code,
-          pen,
-          top + row * step + font.ascender * scale,
-          scale,
-        );
-        row++;
-      };
-
       for (let i = this.lineStart[column]; i < this.lineEnd[column]; i++) {
-        if (this.codes[i] === SPACE) row++;
-        else place(this.codes[i]);
+        const code = this.codes[i];
+        if (code !== CHAR.SPACE) {
+          this.placeInColumn(font, code, x, baseline + row * step);
+        }
+        row++;
       }
       if (this.lineEllipsis[column]) {
-        for (const code of this.ellipsisCodes(font)) place(code);
+        for (const code of this.ellipsisCodes(font)) {
+          this.placeInColumn(font, code, x, baseline + row * step);
+          row++;
+        }
       }
     }
-    this.size.width = boxWidth;
-    this.size.height = boxHeight;
+    this.run.size.width = boxWidth;
+    this.run.size.height = boxHeight;
   }
 
-  /** returns the advance */
-  private pushGlyph(
+  private placeInColumn(
     font: FontData,
     code: number,
-    pen: number,
+    left: number,
     baseline: number,
-    scale: number,
   ) {
     const glyph = TextLayout.glyph(font, code);
-    this.glyphs.push(glyph);
-    this.positions.push(
-      pen + glyph.offsetX * scale,
-      baseline + glyph.offsetY * scale,
-    );
-    return glyph.advance * scale;
+    const centered =
+      (this.columnWidth - glyph.advance * this.run.glyphScale) / 2;
+    this.run.place(glyph, left + centered, baseline);
   }
 }

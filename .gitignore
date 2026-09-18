@@ -91,3 +91,9 @@ typings/
 out/
 dist/
 # my own
+
+# Claude Code
+.claude/
+CLAUDE.md
+**/CLAUDE.md
+src/core/aurora2/plans/

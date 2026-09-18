@@ -70,6 +70,7 @@ export abstract class Pass<T extends keyof PassEncoders = keyof PassEncoders> {
     return true;
   }
   destroy(): void {}
+  counters?(): Record<string, number>;
   abstract execute(encoder: PassEncoders[T], ctx: PassContexts[T]): void;
 }
 
@@ -183,6 +184,23 @@ export class PassContext {
       `Texture "${name}" was not written this frame`,
     );
     return ResourcePool.view(texture, mip);
+  }
+  public arrayView(name: string) {
+    assert(
+      this.declared.reads.includes(name) ||
+        this.declared.modifies.includes(name),
+      `Pass reads "${name}" without declaring it in resources()`,
+    );
+    const texture = this.textures.get(name);
+    assert(
+      texture !== undefined,
+      `Texture "${name}" was not written this frame`,
+    );
+    return ResourcePool.arrayView(texture);
+  }
+  // lets a pass reused across rebuilds find the state of the build being executed
+  public get getResources(): Readonly<PassResources> {
+    return this.declared;
   }
   public size(name: string, mip = 0): Size2D {
     assert(
@@ -328,12 +346,13 @@ export class MultiPassContext extends PassContext {
       }
     }
 
+    const passLabel = `${this.passName}:${label}`;
     const renderPass = debug.aurora.watchRender(
       this.encoder.beginRenderPass({
-        label: `${this.passName}:${label}`,
+        label: passLabel,
         colorAttachments,
         depthStencilAttachment,
-        timestampWrites: GpuTimer.stepWrites(),
+        timestampWrites: GpuTimer.stepWrites(passLabel),
       }),
     );
     renderPass.setBindGroup(0, SharedBinds.getFrame);
@@ -342,10 +361,11 @@ export class MultiPassContext extends PassContext {
   }
 
   public beginCompute(label: string) {
+    const passLabel = `${this.passName}:${label}`;
     const computePass = debug.aurora.watchCompute(
       this.encoder.beginComputePass({
-        label: `${this.passName}:${label}`,
-        timestampWrites: GpuTimer.stepWrites(),
+        label: passLabel,
+        timestampWrites: GpuTimer.stepWrites(passLabel),
       }),
     );
     computePass.setBindGroup(0, SharedBinds.getFrame);

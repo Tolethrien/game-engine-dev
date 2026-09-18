@@ -38,6 +38,83 @@ export type VertexWriter<T extends VertexFields> = {
   at(index: number): void;
 } & { [K in keyof T]: (...values: FormatArgs<T[K]>) => void };
 
+interface WriterState {
+  base: number;
+  floats: Float32Array;
+  uints: Uint32Array;
+  bytes: Uint8Array;
+}
+type NumericSetter = (a: number, b: number, c: number, d: number) => void;
+
+// one variant per component count, chosen once at createWriter instead of
+// branching on components/view on every call (hot path: 13 calls/instance)
+function floatSetter(
+  components: number,
+  offset: number,
+  state: WriterState,
+): NumericSetter {
+  switch (components) {
+    case 1:
+      return (a) => {
+        state.floats[state.base + offset] = a;
+      };
+    case 2:
+      return (a, b) => {
+        const o = state.base + offset;
+        state.floats[o] = a;
+        state.floats[o + 1] = b;
+      };
+    case 3:
+      return (a, b, c) => {
+        const o = state.base + offset;
+        state.floats[o] = a;
+        state.floats[o + 1] = b;
+        state.floats[o + 2] = c;
+      };
+    default:
+      return (a, b, c, d) => {
+        const o = state.base + offset;
+        state.floats[o] = a;
+        state.floats[o + 1] = b;
+        state.floats[o + 2] = c;
+        state.floats[o + 3] = d;
+      };
+  }
+}
+function uintSetter(
+  components: number,
+  offset: number,
+  state: WriterState,
+): NumericSetter {
+  switch (components) {
+    case 1:
+      return (a) => {
+        state.uints[state.base + offset] = a;
+      };
+    case 2:
+      return (a, b) => {
+        const o = state.base + offset;
+        state.uints[o] = a;
+        state.uints[o + 1] = b;
+      };
+    case 3:
+      return (a, b, c) => {
+        const o = state.base + offset;
+        state.uints[o] = a;
+        state.uints[o + 1] = b;
+        state.uints[o + 2] = c;
+      };
+    default:
+      return (a, b, c, d) => {
+        const o = state.base + offset;
+        state.uints[o] = a;
+        state.uints[o + 1] = b;
+        state.uints[o + 2] = c;
+        state.uints[o + 3] = d;
+      };
+  }
+}
+
 export default class VertexLayout<T extends VertexFields> {
   public readonly layout: GPUVertexBufferLayout;
   public readonly stride: number;
@@ -76,7 +153,7 @@ export default class VertexLayout<T extends VertexFields> {
       buffer.getStride === this.stride,
       `Buffer stride ${buffer.getStride} does not match vertex layout stride ${this.stride}`,
     );
-    const state = {
+    const state: WriterState = {
       base: 0,
       floats: buffer.getFloats,
       uints: buffer.getUints,
@@ -106,14 +183,10 @@ export default class VertexLayout<T extends VertexFields> {
         continue;
       }
 
-      writer[name] = (a: number, b: number, c: number, d: number) => {
-        const target = view === "uints" ? state.uints : state.floats;
-        const o = state.base + offset;
-        target[o] = a;
-        if (components > 1) target[o + 1] = b;
-        if (components > 2) target[o + 2] = c;
-        if (components > 3) target[o + 3] = d;
-      };
+      writer[name] =
+        view === "uints"
+          ? uintSetter(components, offset, state)
+          : floatSetter(components, offset, state);
     }
     return writer as VertexWriter<T>;
   }

@@ -1,26 +1,27 @@
 import AssetManager from "../assetManager";
-import Font, { FontData, Glyph } from "./font";
+import Font, { FontData } from "./font";
+import TextRun from "./textRun";
 
-export const SPACE = 32;
-export const NEWLINE = 10;
-
-/** called for every visible glyph, x is the pen from the line start in pixels */
-export type PlaceGlyph = (glyph: Glyph, x: number, line: number) => void;
+export const CHAR = Object.freeze({
+  SPACE: 32,
+  NEWLINE: 10,
+  RETURN: 13,
+  TAB: 9,
+});
 
 export default class TextLayout {
-  /** dynamic fonts create the glyph here, on its first use */
+  private static measureCodes: number[] = [];
+
   public static glyph(font: FontData, code: number) {
     return font.glyphs.get(code) ?? font.resolve?.(code) ?? font.fallback;
   }
 
-  /** advance without creating the glyph */
   public static advance(font: FontData, code: number) {
     const glyph = font.glyphs.get(code);
     if (glyph) return glyph.advance;
     return font.measure ? font.measure(code) : font.fallback.advance;
   }
 
-  // ascii is always normalized, skip the cost for plain text
   public static normalize(text: string) {
     for (let i = 0; i < text.length; i++) {
       if (text.charCodeAt(i) > 0x7f) return text.normalize("NFC");
@@ -28,56 +29,29 @@ export default class TextLayout {
     return text;
   }
 
-  /** code points of the normalized text, written into out */
   public static codes(text: string, out: number[]) {
     const source = this.normalize(text);
     out.length = 0;
     for (let i = 0; i < source.length; i++) {
-      const code = source.codePointAt(i)!;
+      let code = source.codePointAt(i)!;
       if (code > 0xffff) i++;
+      if (code === CHAR.RETURN) continue;
+      // tab stops would need columns, until then a tab is one space
+      if (code === CHAR.TAB) code = CHAR.SPACE;
       out.push(code);
     }
     return out;
   }
 
-  /**
-   * no wrapping, "\n" starts a new line, returns the size in pixels.
-   * index loop instead of for..of, which allocates a string per character
-   */
-  public static lines(
+  public static layout(
     font: FontData,
-    text: string,
+    codes: readonly number[],
     size: number,
-    place?: PlaceGlyph,
-    letterSpacing = 0,
-  ): Size2D {
-    const scale = size / font.size;
-    const source = this.normalize(text);
-    let pen = 0;
-    let widest = 0;
-    let line = 0;
-    let lineStart = true;
-    for (let i = 0; i < source.length; i++) {
-      const code = source.codePointAt(i)!;
-      if (code > 0xffff) i++;
-      if (code === NEWLINE) {
-        if (pen > widest) widest = pen;
-        pen = 0;
-        line++;
-        lineStart = true;
-        continue;
-      }
-      // spacing goes between letters, not after the last one of a line
-      if (!lineStart) pen += letterSpacing;
-      lineStart = false;
-      // space only moves the pen, no reason to draw an empty quad
-      if (place && code !== SPACE) place(this.glyph(font, code), pen, line);
-      pen += this.advance(font, code) * scale;
-    }
-    return {
-      width: Math.max(widest, pen),
-      height: (line + 1) * font.lineHeight * scale,
-    };
+    letterSpacing: number,
+    run: TextRun,
+  ) {
+    this.walk(font, codes, size, letterSpacing, run, run.size);
+    return run;
   }
 
   public static measure(
@@ -85,14 +59,51 @@ export default class TextLayout {
     text: string,
     size?: number,
     letterSpacing = 0,
-  ) {
+  ): Size2D {
     const font = AssetManager.getFont(fontName, size);
-    return this.lines(
+    return this.walk(
       font,
-      text,
+      this.codes(text, this.measureCodes),
       Font.drawSize(font, size),
-      undefined,
       letterSpacing,
+      null,
+      { width: 0, height: 0 },
     );
+  }
+
+  private static walk(
+    font: FontData,
+    codes: readonly number[],
+    size: number,
+    letterSpacing: number,
+    run: TextRun | null,
+    out: Size2D,
+  ) {
+    const scale = size / font.size;
+    run?.reset(scale);
+    let pen = 0;
+    let widest = 0;
+    let line = 0;
+    let lineStart = true;
+    for (let i = 0; i < codes.length; i++) {
+      const code = codes[i];
+      if (code === CHAR.NEWLINE) {
+        if (pen > widest) widest = pen;
+        pen = 0;
+        line++;
+        lineStart = true;
+        continue;
+      }
+      if (!lineStart) pen += letterSpacing;
+      lineStart = false;
+      if (run && code !== CHAR.SPACE) {
+        const baseline = (font.ascender + line * font.lineHeight) * scale;
+        run.place(this.glyph(font, code), pen, baseline);
+      }
+      pen += this.advance(font, code) * scale;
+    }
+    out.width = Math.max(widest, pen);
+    out.height = (line + 1) * font.lineHeight * scale;
+    return out;
   }
 }

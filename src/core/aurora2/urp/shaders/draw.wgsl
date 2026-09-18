@@ -1,3 +1,7 @@
+// the shape is constant per primitive, so every pixel of a 2x2 quad takes the same
+// branch: the shadow return does not break derivatives a material may still take
+diagnostic(off, derivative_uniformity);
+
 struct Frame {
   time: f32,
   realTime: f32,
@@ -22,6 +26,12 @@ const SHAPE_GLYPH_OUTLINE: u32 = 4u;
 // glyph of an mtsdf atlas: distances in all four channels
 const SHAPE_MTSDF: u32 = 5u;
 const SHAPE_MTSDF_OUTLINE: u32 = 6u;
+// gui box-shadow: box geometry, blur in outlineWidth, params = offset.xy, spread, inset
+const SHAPE_SHADOW: u32 = 7u;
+const SHAPE_INNER_SHADOW: u32 = 8u;
+// gui text shadow: glyph quad moved by the offset, blur in outlineWidth, params.x = spread
+const SHAPE_GLYPH_SHADOW: u32 = 9u;
+const SHAPE_MTSDF_SHADOW: u32 = 10u;
 struct SortParams {
   // per axis: x, y, z
   origin: vec3f,
@@ -48,6 +58,8 @@ override depthSort: bool = false;
 override opaquePass: bool = false;
 // gui: positions are canvas pixels, no camera, target is canvas sized
 override screenSpace: bool = false;
+// "gx+gy+z": sortDepth reads the diagonal gx + gy + z instead of point.y
+override isoSort: bool = false;
 // must match UI_ATLAS in draw.ts, marks a layer of the ui texture array
 const UI_ATLAS: u32 = 0x80000000u;
 
@@ -72,8 +84,9 @@ fn worldToPixel(anchor: vec2f, offset: vec2f) -> vec2f {
 }
 // larger key is closer, must match sortKey in passes/draw.ts
 fn sortDepth(point: vec3f) -> f32 {
+  let sorted = vec3f(point.x, select(point.y, point.x + point.y + point.z, isoSort), point.z);
   let index = clamp(
-    floor((point - sortParams.origin) / sortParams.step),
+    floor((sorted - sortParams.origin) / sortParams.step),
     vec3f(0.0),
     sortParams.count - 1.0,
   );
@@ -158,6 +171,46 @@ fn quadU(h: vec2f, e: vec2f, f: vec2f, g: vec2f, v: f32) -> f32 {
   return select((h.y - f.y * v) / denY, (h.x - f.x * v) / denX, abs(denX) > abs(denY));
 }
 
+// Evan Wallace, fast rounded rectangle shadows: exact erf along x, 4 samples along y
+// https://madebyevan.com/shaders/fast-rounded-rectangle-shadows/
+fn gaussian(x: f32, sigma: f32) -> f32 {
+  return exp(-(x * x) / (2.0 * sigma * sigma)) / (2.5066282746 * sigma);
+}
+fn erf2(x: vec2f) -> vec2f {
+  let s = sign(x);
+  let a = abs(x);
+  var y = 1.0 + (0.278393 + (0.230389 + 0.000972 * a) * a) * a;
+  y = y * y;
+  return s - s / (y * y);
+}
+fn blurredBoxX(x: f32, y: f32, sigma: f32, corner: f32, halfSize: vec2f) -> f32 {
+  let delta = min(halfSize.y - corner - abs(y), 0.0);
+  let curved = halfSize.x - corner + sqrt(max(0.0, corner * corner - delta * delta));
+  let integral = 0.5 + 0.5 * erf2((x + vec2f(-curved, curved)) * (0.7071067812 / sigma));
+  return integral.y - integral.x;
+}
+// coverage of a gaussian blurred rounded box centered at 0, one corner radius per quadrant
+fn blurredBox(p: vec2f, halfSize: vec2f, radius: vec4f, sigma: f32) -> f32 {
+  if (halfSize.x <= 0.0 || halfSize.y <= 0.0) {
+    return 0.0;
+  }
+  let top = select(radius.x, radius.y, p.x > 0.0);
+  let bottom = select(radius.w, radius.z, p.x > 0.0);
+  let corner = min(select(top, bottom, p.y > 0.0), min(halfSize.x, halfSize.y));
+  let low = p.y - halfSize.y;
+  let high = p.y + halfSize.y;
+  let start = clamp(-3.0 * sigma, low, high);
+  let end = clamp(3.0 * sigma, low, high);
+  let stride = (end - start) / 4.0;
+  var y = start + stride * 0.5;
+  var value = 0.0;
+  for (var i = 0; i < 4; i++) {
+    value += blurredBoxX(p.x, p.y - y, sigma, corner, halfSize) * gaussian(y, sigma) * stride;
+    y += stride;
+  }
+  return value;
+}
+
 struct InstanceIn {
   @location(0) position: vec2f,
   @location(1) size: vec2f,
@@ -218,7 +271,12 @@ fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> Vertex
   } else {
     let halfSize = instance.size * 0.5;
     // one render texel of margin for antialiasing
-    let pad = select(1.0 / camera.zoom, 1.0, screenSpace);
+    var pad = select(1.0 / camera.zoom, 1.0, screenSpace);
+    if (instance.shape == SHAPE_SHADOW) {
+      // outer shadow reaches past the box: offset, spread and 3 sigma of blur
+      let offset = instance.params.xy;
+      pad += max(abs(offset.x), abs(offset.y)) + max(instance.params.z, 0.0) + 1.5 * instance.outlineWidth;
+    }
     let local = corner * (halfSize + pad);
     let c = cos(instance.rotation);
     let s = sin(instance.rotation);
@@ -252,7 +310,7 @@ struct MaterialInput {
   texel: vec4f,
   // 1 on the outline band, 0 inside the fill
   ring: f32,
-  // signed distance to the outer edge, negative inside, uv units on quads
+  // signed distance to the outer edge, negative inside, approximate on quads
   dist: f32,
   // how far dist stays true: the reach of the distance field of a glyph in pixels
   reach: f32,
@@ -261,10 +319,30 @@ struct MaterialInput {
 
 // MATERIAL
 
+// shadows skip the material, offset and spread act on the box like in css
+fn shadowCoverage(in: VertexOut, dist: f32, aa: f32, shape: f32) -> f32 {
+  let offset = in.params.xy;
+  let spread = in.params.z;
+  let sigma = max(in.outlineWidth * 0.5, 0.5);
+  if (in.shape == SHAPE_SHADOW) {
+    let radius = max(in.radius + spread, vec4f(0.0));
+    let blurred = blurredBox(in.local - offset, in.halfSize + spread, radius, sigma);
+    // always cut out under the box, a see-through panel must not show its own shadow
+    return blurred * (1.0 - shape);
+  }
+  // inner: inside the box shrunk by its outline, outside a blurred box shrunk by spread
+  let inset = in.params.w;
+  let mask = clamp(0.5 - (dist + inset) / aa, 0.0, 1.0);
+  let shrink = inset + spread;
+  let radius = max(in.radius - shrink, vec4f(0.0));
+  let blurred = blurredBox(in.local - offset, in.halfSize - shrink, radius, sigma);
+  return mask * (1.0 - blurred);
+}
+
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
-  let maskGlyph = in.shape == SHAPE_GLYPH || in.shape == SHAPE_GLYPH_OUTLINE;
-  let msdfGlyph = in.shape == SHAPE_MTSDF || in.shape == SHAPE_MTSDF_OUTLINE;
+  let maskGlyph = in.shape == SHAPE_GLYPH || in.shape == SHAPE_GLYPH_OUTLINE || in.shape == SHAPE_GLYPH_SHADOW;
+  let msdfGlyph = in.shape == SHAPE_MTSDF || in.shape == SHAPE_MTSDF_OUTLINE || in.shape == SHAPE_MTSDF_SHADOW;
   let glyph = maskGlyph || msdfGlyph;
   let glyphOutline = in.shape == SHAPE_GLYPH_OUTLINE || in.shape == SHAPE_MTSDF_OUTLINE;
   var uv01: vec2f;
@@ -273,7 +351,9 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
 
   if (in.shape == SHAPE_QUAD) {
     let quadUv = invBilinear(in.local, vec2f(0.0), in.quadB, in.quadC, in.quadD);
-    dist = -min(min(quadUv.x, 1.0 - quadUv.x), min(quadUv.y, 1.0 - quadUv.y));
+    // approximate px: uv-space distance scaled by the shorter of the two edges from the first point
+    let edge = min(length(in.quadB), length(in.quadD));
+    dist = -min(min(quadUv.x, 1.0 - quadUv.x), min(quadUv.y, 1.0 - quadUv.y)) * edge;
     uv01 = clamp(quadUv, vec2f(0.0), vec2f(1.0));
     // materials get a centered local like on other shapes
     local = (uv01 - 0.5) * in.halfSize * 2.0;
@@ -338,6 +418,15 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
     texel = vec4f(select(covered, 0.0, glyphOutline));
   }
 
+  if (in.shape == SHAPE_SHADOW || in.shape == SHAPE_INNER_SHADOW) {
+    return in.color * shadowCoverage(in, dist, aa, shape);
+  }
+  if (in.shape == SHAPE_GLYPH_SHADOW || in.shape == SHAPE_MTSDF_SHADOW) {
+    // the field is no convolution, a smoothstep of +-blur fades about as wide as the box gaussian
+    let width = max(in.outlineWidth, glyphAa * 0.5);
+    return in.color * (1.0 - smoothstep(-width, width, glyphDist - in.params.x));
+  }
+
   var input: MaterialInput;
   input.uv = uv01;
   input.local = local;
@@ -373,7 +462,8 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
     if (shape * color.a < 0.5) {
       discard;
     }
-    return vec4f(color.rgb, 1.0);
+    // color is premultiplied, undo it: opaque writes full alpha, not a darkened edge
+    return vec4f(color.rgb / max(color.a, 0.0001), 1.0);
   }
   return color * shape;
 }

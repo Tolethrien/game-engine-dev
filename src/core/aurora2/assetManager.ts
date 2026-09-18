@@ -1,11 +1,24 @@
 import { assert, loadImg } from "@axiom/utils";
 import Aurora from "./core";
-import Font, { DynamicFontSource, FontData, FontSource } from "./text/font";
+import Font, {
+  DynamicFontSource,
+  FontData,
+  FontSource,
+  GridFontSource,
+} from "./text/font";
 import DynamicFont from "./text/dynamicFont";
 import GlyphAtlas from "./text/glyphAtlas";
 import type { FontAtlasConfig } from "./config";
+import fallbackFontUrl from "./assets/fallbackFont.png";
 
 export type AssetName = "albedo" | "normal" | "height" | "ui" | "fonts";
+export const ASSET_NAMES: readonly AssetName[] = [
+  "albedo",
+  "normal",
+  "height",
+  "ui",
+  "fonts",
+];
 export interface SetTexturesOptions {
   sources: TextureSource[];
   normalMaps: boolean;
@@ -43,6 +56,19 @@ const FONTS_FORMAT: GPUTextureFormat = "rgba8unorm";
 const FONTS_NEUTRAL = [0, 0, 0, 0];
 const DYNAMIC_SIZE = 16;
 const WORLD_ASSETS: AssetName[] = ["albedo", "normal", "height"];
+export const DEFAULT_FONT_NAME = "default";
+// bit-identical to src/sandbox/assets/fonts/testGrid/testGrid.png
+const BUILTIN_FONT: GridFontSource = {
+  name: DEFAULT_FONT_NAME,
+  type: "grid",
+  url: fallbackFontUrl,
+  cell: { width: 16, height: 30 },
+  chars:
+    Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join(
+      "",
+    ) + "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ",
+  baseline: 25,
+};
 
 export default class AssetManager {
   private static textures: Map<AssetName, GPUTexture> = new Map();
@@ -54,11 +80,13 @@ export default class AssetManager {
   private static pages: Map<string, AtlasPage> = new Map();
   private static warned: Set<string> = new Set();
   private static fonts: Map<string, FontData> = new Map();
+  private static fontWarned: Set<string> = new Set();
   private static fontsVersion = 0;
   private static dynamicSources: Map<string, DynamicFontSource> = new Map();
   private static dynamicFonts: Map<string, Map<number, DynamicFont>> =
     new Map();
-  private static glyphAtlas: GlyphAtlas | null = null;
+  declare private static glyphAtlas: GlyphAtlas;
+  declare private static defaultFont: FontData;
 
   public static async setTextures({
     sources,
@@ -243,15 +271,20 @@ export default class AssetManager {
     const names: Set<string> = new Set();
     for (const source of sources) {
       assert(
+        source.name !== DEFAULT_FONT_NAME,
+        `Font name "${DEFAULT_FONT_NAME}" is reserved for the built-in font`,
+      );
+      assert(
         !names.has(source.name),
         `Font name "${source.name}" is used more than once`,
       );
       names.add(source.name);
     }
 
-    const grids = sources.filter((source) => source.type === "grid");
-    const dynamics = sources.filter((source) => source.type === "dynamic");
-    const mtsdfs = sources.filter((source) => source.type === "mtsdf");
+    const allSources: FontSource[] = [BUILTIN_FONT, ...sources];
+    const grids = allSources.filter((source) => source.type === "grid");
+    const dynamics = allSources.filter((source) => source.type === "dynamic");
+    const mtsdfs = allSources.filter((source) => source.type === "mtsdf");
     const [images, atlases] = await Promise.all([
       Promise.all(grids.map((source) => this.loadImageData(source.url))),
       Promise.all(mtsdfs.map((source) => this.loadRawBitmap(source.url))),
@@ -259,7 +292,7 @@ export default class AssetManager {
     ]);
 
     // every font lives in the glyph atlas pages, layer 0 stays empty
-    const pages = sources.length > 0 ? atlas.pages : 0;
+    const pages = atlas.pages;
     const texture = this.buildArray(
       "fonts",
       FONTS_FORMAT,
@@ -269,25 +302,28 @@ export default class AssetManager {
       atlas.pageSize,
       pages,
     );
-    const glyphAtlas =
-      pages > 0
-        ? new GlyphAtlas(texture, 1, pages, atlas.pageSize, atlas.spread)
-        : null;
+    const glyphAtlas = new GlyphAtlas(
+      texture,
+      1,
+      pages,
+      atlas.pageSize,
+      atlas.spread,
+    );
 
     const fonts: Map<string, FontData> = new Map();
     grids.forEach((source, i) => {
-      fonts.set(source.name, Font.fromGrid(source, images[i], glyphAtlas!));
+      fonts.set(source.name, Font.fromGrid(source, images[i], glyphAtlas));
     });
     mtsdfs.forEach((source, i) => {
       const bitmap = atlases[i];
-      const slot = glyphAtlas!.storeBitmap(bitmap);
+      const slot = glyphAtlas.storeBitmap(bitmap);
       assert(
         slot !== null,
-        `Font "" has a x atlas that does not fit a page of px`,
+        `Font "${source.name}" has a ${bitmap.width}x${bitmap.height} atlas that does not fit a page of ${atlas.pageSize}px`,
       );
       fonts.set(
         source.name,
-        Font.fromMtsdf(source, slot, glyphAtlas!.layerSize),
+        Font.fromMTSDF(source, slot, glyphAtlas.layerSize),
       );
       bitmap.close();
     });
@@ -299,11 +335,13 @@ export default class AssetManager {
       texture.createView({ label: "fontsArrayView", dimension: "2d-array" }),
     );
     this.fonts = fonts;
+    this.fontWarned.clear();
     this.dynamicSources = new Map(
       dynamics.map((source) => [source.name, source]),
     );
     this.dynamicFonts.clear();
     this.glyphAtlas = glyphAtlas;
+    this.defaultFont = fonts.get(DEFAULT_FONT_NAME)!;
     this.fontsVersion++;
   }
   /** changes whenever glyphs may have moved, text boxes lay out again */
@@ -316,16 +354,26 @@ export default class AssetManager {
     if (font) return font;
 
     const source = this.dynamicSources.get(name);
-    assert(source !== undefined, `Font "${name}" is not loaded`);
-    const pixels = Math.max(1, Math.round(size ?? source.size ?? DYNAMIC_SIZE));
-    let sizes = this.dynamicFonts.get(name);
-    if (!sizes) this.dynamicFonts.set(name, (sizes = new Map()));
-    let dynamic = sizes.get(pixels);
-    if (!dynamic) {
-      dynamic = new DynamicFont(name, pixels, this.glyphAtlas!);
-      sizes.set(pixels, dynamic);
+    if (source) {
+      const pixels = Math.max(
+        1,
+        Math.round(size ?? source.size ?? DYNAMIC_SIZE),
+      );
+      let sizes = this.dynamicFonts.get(name);
+      if (!sizes) this.dynamicFonts.set(name, (sizes = new Map()));
+      let dynamic = sizes.get(pixels);
+      if (!dynamic) {
+        dynamic = new DynamicFont(name, pixels, this.glyphAtlas);
+        sizes.set(pixels, dynamic);
+      }
+      return dynamic;
     }
-    return dynamic;
+
+    if (!this.fontWarned.has(name)) {
+      console.warn(`Font "${name}" not found, using default`);
+      this.fontWarned.add(name);
+    }
+    return this.defaultFont;
   }
 
   public static getTexture(name: string): AtlasPage {
@@ -355,6 +403,9 @@ export default class AssetManager {
 
   public static hasAsset(name: AssetName) {
     return this.views.has(name);
+  }
+  public static getAssetTexture(name: AssetName) {
+    return this.textures.get(name);
   }
 
   private static async loadBitmap(url?: string) {

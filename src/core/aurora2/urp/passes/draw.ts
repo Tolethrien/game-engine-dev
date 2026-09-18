@@ -1,4 +1,3 @@
-import { debug } from "@debug";
 import { assert } from "@axiom/utils";
 import AxiomMath from "@axiom/math";
 import Aurora, { RenderPipelineOptions } from "../../core";
@@ -9,7 +8,7 @@ import VertexLayout, {
   VertexFields,
   VertexWriter,
 } from "../../utils/vertexLayout";
-import { DEFAULT_MATERIAL, Draw, DrawApi, DrawGui } from "../draw";
+import { DEFAULT_MATERIAL, DrawApi } from "../draw";
 import Material from "../../material";
 import shader from "../shaders/draw.wgsl?raw";
 import type { URPSortConfig } from "../urp";
@@ -46,11 +45,10 @@ interface OpaqueBatch {
 }
 export interface DrawPassOptions {
   name: string;
-  /** world follows the camera at render resolution, screen is canvas pixels */
   space: "world" | "screen";
-  /** texture created and drawn into by this pass */
   target: string;
   sort: URPSortConfig;
+  api: DrawApi;
 }
 
 export default class DrawPass extends RenderPass {
@@ -62,6 +60,8 @@ export default class DrawPass extends RenderPass {
   private readonly facade: DrawApi;
   // axis indices (x 0, y 1, z 2), most significant first
   private readonly sortAxes: number[];
+  // "gx+gy+z": slot y carries gx + gy + z (the diagonal), not sortPoint.y
+  private readonly isoSort: boolean;
   private pipelines: MaterialPipelines[] = [];
   // null where the material never draws opaque (additive, forced transparent, mode none)
   private opaqueBatches: (OpaqueBatch | null)[] = [];
@@ -70,7 +70,6 @@ export default class DrawPass extends RenderPass {
   declare private transparentWriter: DrawWriter;
   declare private binds: PassBinds<typeof BINDS>;
   declare private sortBuffer: GPUBuffer;
-  private order = new Uint32Array(64);
   private keys = new Float64Array(64);
   private objectSortingRange = {
     minX: Infinity,
@@ -89,19 +88,22 @@ export default class DrawPass extends RenderPass {
   // SortParams in draw.wgsl: each row is vec3f + f32
   private sortData = new Float32Array(16);
 
-  constructor({ name, space, target, sort }: DrawPassOptions) {
+  constructor({ name, space, target, sort, api }: DrawPassOptions) {
     super();
     this.name = name;
     this.space = space;
     this.target = target;
-    this.facade = space === "screen" ? DrawGui : Draw;
+    this.facade = api;
     this.sort = sort;
+    this.isoSort = sort.mode === "gx+gy+z";
     this.sortAxes =
       sort.mode === "none"
         ? []
         : sort.mode === "layer"
           ? [2]
-          : sort.mode.split("+").map((axis) => "xyz".indexOf(axis));
+          : this.isoSort
+            ? [1, 2, 0]
+            : sort.mode.split("+").map((axis) => "xyz".indexOf(axis));
 
     const { step, count } = this.sortParams;
     step.set([sort.step.x, sort.step.y, sort.step.z]);
@@ -145,7 +147,6 @@ export default class DrawPass extends RenderPass {
     );
 
     this.facade.setTarget(this);
-    debug.aurora.connectCounters(this.name, this.counters);
   }
 
   resources(res: PassResources) {
@@ -179,7 +180,13 @@ export default class DrawPass extends RenderPass {
     if (this.depthSorted) {
       res.create(
         `${this.name}Depth`,
-        { size: { scale: 1 }, format: "depth32float" },
+        {
+          size:
+            this.space === "screen"
+              ? { scale: 1, base: "canvas" }
+              : { scale: 1 },
+          format: "depth32float",
+        },
         { depthClearValue: 1 },
       );
     }
@@ -196,8 +203,12 @@ export default class DrawPass extends RenderPass {
     const range = this.objectSortingRange;
     if (sortX < range.minX) range.minX = sortX;
     if (sortX > range.maxX) range.maxX = sortX;
-    if (sortY < range.minY) range.minY = sortY;
-    if (sortY > range.maxY) range.maxY = sortY;
+    // iso: slot y tracks the diagonal gx + gy + z, computed like the shader (see sortKey)
+    const slotY = this.isoSort
+      ? Math.fround(Math.fround(sortX + sortY) + sortZ)
+      : sortY;
+    if (slotY < range.minY) range.minY = slotY;
+    if (slotY > range.maxY) range.maxY = slotY;
 
     const id = this.pipelines[material.id] ? material.id : DEFAULT_MATERIAL.id;
 
@@ -217,6 +228,9 @@ export default class DrawPass extends RenderPass {
   public beginFrame() {
     for (const batch of this.opaqueBatches) batch?.buffer.clear();
     this.transparent.clear();
+    // sortTransparent (and its reserve) only runs on frames with transparents,
+    // so a quiet-frame count on its own would never shrink this one back down
+    this.sorted.clear();
     const range = this.objectSortingRange;
     range.minX = Infinity;
     range.maxX = -Infinity;
@@ -262,7 +276,6 @@ export default class DrawPass extends RenderPass {
 
   destroy() {
     this.facade.clearTarget(this);
-    debug.aurora.disconnectCounters(this.name, this.counters);
     for (const batch of this.opaqueBatches) batch?.buffer.destroy();
     this.transparent.destroy();
     this.sorted.destroy();
@@ -285,6 +298,7 @@ export default class DrawPass extends RenderPass {
       linearColors: Aurora.isLinear,
       depthSort: sorted,
       screenSpace: this.space === "screen",
+      isoSort: this.isoSort,
     };
 
     const [opaque, transparent] = await Promise.all([
@@ -340,9 +354,16 @@ export default class DrawPass extends RenderPass {
     let key = 0;
     for (let i = 0; i < this.sortAxes.length; i++) {
       const axis = this.sortAxes[i];
-      const index = Math.floor(
-        (floats[point + axis] - origin[axis]) / step[axis],
-      );
+      // iso: slot y reads gx + gy + z instead of sortPoint.y, summed in
+      // float32 like the shader so CPU and GPU never disagree at a step edge
+      const value =
+        this.isoSort && axis === 1
+          ? Math.fround(
+              Math.fround(floats[point] + floats[point + 1]) +
+                floats[point + 2],
+            )
+          : floats[point + axis];
+      const index = Math.floor((value - origin[axis]) / step[axis]);
       key += AxiomMath.clamp(index, 0, count[axis] - 1) * weight[axis];
     }
     return key;
@@ -350,29 +371,28 @@ export default class DrawPass extends RenderPass {
 
   private sortTransparent() {
     const count = this.transparent.getCount;
-    if (this.order.length < count) {
-      const size = 2 ** Math.ceil(Math.log2(count));
-      this.order = new Uint32Array(size);
-      this.keys = new Float64Array(size);
+    if (this.keys.length < count) {
+      this.keys = new Float64Array(2 ** Math.ceil(Math.log2(count)));
     }
-    const order = this.order.subarray(0, count);
-    const keys = this.keys;
     const floats = this.transparent.getFloats;
     const stride = INSTANCE.stride;
     const sortPoint = INSTANCE.offsets.sortPoint;
+    // hot path: keys are integers < 2^24 and count < 2^29 in practice, so
+    // key * count + index fits Float64 exactly (< 2^53) and the native sort
+    // (no comparator callback) can order both at once, index recovered by % count
+    const keys = this.keys.subarray(0, count);
     for (let i = 0; i < count; i++) {
-      order[i] = i;
-      keys[i] = this.sortKey(floats, i * stride + sortPoint);
+      keys[i] = this.sortKey(floats, i * stride + sortPoint) * count + i;
     }
-    order.sort((a, b) => keys[a] - keys[b]);
+    keys.sort();
 
-    this.sorted.begin(count);
-    const source = this.transparent.getBytes;
-    const target = this.sorted.getBytes;
-    const bytes = stride * 4;
+    this.sorted.reserve(count);
+    const source = this.transparent.getUints;
+    const target = this.sorted.getUints;
     for (let i = 0; i < count; i++) {
-      const from = order[i] * bytes;
-      target.set(source.subarray(from, from + bytes), i * bytes);
+      const from = (keys[i] % count) * stride;
+      const to = i * stride;
+      for (let w = 0; w < stride; w++) target[to + w] = source[from + w];
     }
     return this.sorted;
   }
@@ -385,8 +405,7 @@ export default class DrawPass extends RenderPass {
     });
   }
 
-  //DEBUGGER func
-  private readonly counters = () => {
+  counters() {
     let opaque = 0;
     for (const batch of this.opaqueBatches)
       opaque += batch?.buffer.getCount ?? 0;
@@ -401,5 +420,5 @@ export default class DrawPass extends RenderPass {
       counters["sort depth used %"] = Math.round(used * 10) / 10;
     }
     return counters;
-  };
+  }
 }

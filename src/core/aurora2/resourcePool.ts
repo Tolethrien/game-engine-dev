@@ -23,6 +23,8 @@ export const STORAGE_FORMATS: ReadonlySet<GPUTextureFormat> = new Set([
   "rgba32float",
   "r32float",
 ]);
+// view cache slot next to mip levels (-1 = all mips)
+const ARRAY_VIEW = -2;
 export default class ResourcePool {
   private static texturesFree: Map<string, GPUTexture[]> = new Map();
   private static texturesUsed: Map<GPUTexture, string> = new Map();
@@ -62,7 +64,7 @@ export default class ResourcePool {
   private static sizeBase(size: TextureSize) {
     return "scale" in size ? (size.base ?? "render") : "fixed";
   }
-  private static resolveSize(size: TextureSize): Size2D {
+  public static resolveSize(size: TextureSize): Size2D {
     if (!("scale" in size)) return size;
     const base =
       size.base === "canvas"
@@ -120,6 +122,30 @@ export default class ResourcePool {
       }
       view = tex.createView(desc);
       texViews.set(slot, view);
+    }
+    return view;
+  }
+  // every mip and layer as 2d-array, depth aspect only so depth can be read as float
+  public static arrayView(tex: GPUTexture): GPUTextureView {
+    const key = this.texturesUsed.get(tex);
+    assert(
+      key !== undefined,
+      `Requesting view of texture: ${tex.label} - that is not in use`,
+    );
+
+    let texViews = this.views.get(tex);
+    if (!texViews) {
+      texViews = new Map();
+      this.views.set(tex, texViews);
+    }
+    let view = texViews.get(ARRAY_VIEW);
+    if (!view) {
+      view = tex.createView({
+        label: `${key}|array`,
+        dimension: "2d-array",
+        aspect: DEPTH_FORMATS.has(tex.format) ? "depth-only" : "all",
+      });
+      texViews.set(ARRAY_VIEW, view);
     }
     return view;
   }
