@@ -6,8 +6,10 @@ import {
   Glyph,
 } from "./font";
 import GlyphAtlas from "./glyphAtlas";
+import { GlyphField } from "./distanceField";
 
 const FALLBACK_CODE = DEFAULT_FALLBACK.codePointAt(0)!;
+const FIELD = { scale: 4, maxSide: 512 };
 
 export default class DynamicFont implements FontData {
   private static canvas: OffscreenCanvas | null = null;
@@ -87,7 +89,14 @@ export default class DynamicFont implements FontData {
     context.clearRect(0, 0, width, height);
     context.fillText(char, padding + left, padding + up);
     const image = context.getImageData(0, 0, width, height);
-    const stored = this.atlas.store(image.data, width, height);
+    const field = this.rasterField(
+      char,
+      padding + left,
+      padding + up,
+      width,
+      height,
+    );
+    const stored = this.atlas.store(image.data, width, height, field);
     if (!stored) {
       // the atlas never frees space, so retrying every frame would only repeat the measuring
       if (code === FALLBACK_CODE) return undefined;
@@ -109,6 +118,34 @@ export default class DynamicFont implements FontData {
     };
     this.glyphs.set(code, glyph);
     return glyph;
+  }
+
+  // a field measured on the 1x mask follows its pixel stairs, outlines and shadows show them
+  private rasterField(
+    char: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): GlyphField {
+    // big glyphs need less help and would cost a lot of EDT
+    const scale = Math.max(
+      1,
+      Math.min(
+        FIELD.scale,
+        Math.floor(FIELD.maxSide / Math.max(width, height)),
+      ),
+    );
+    const fineWidth = width * scale;
+    const fineHeight = height * scale;
+    const context = this.scratch(fineWidth, fineHeight);
+    context.clearRect(0, 0, fineWidth, fineHeight);
+    // same origin as the 1x raster, so both share the letter geometry
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+    context.fillText(char, x, y);
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    const data = context.getImageData(0, 0, fineWidth, fineHeight).data;
+    return { data, scale };
   }
 
   private scratch(width: number, height: number) {

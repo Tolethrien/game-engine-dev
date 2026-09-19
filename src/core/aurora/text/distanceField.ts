@@ -1,5 +1,11 @@
 const FAR = 1e20;
 
+// the glyph rasterized scale times larger, the field is measured on it
+export interface GlyphField {
+  data: Uint8ClampedArray;
+  scale: number;
+}
+
 export default class DistanceField {
   private static outside = new Float64Array(0);
   private static inside = new Float64Array(0);
@@ -13,34 +19,51 @@ export default class DistanceField {
     width: number,
     height: number,
     spread: number,
+    field: GlyphField,
   ) {
-    const count = width * height;
-    this.reserve(count, Math.max(width, height));
+    const { data: fine, scale } = field;
+    const fineWidth = width * scale;
+    const fineHeight = height * scale;
+    const fineCount = fineWidth * fineHeight;
+    this.reserve(fineCount, Math.max(fineWidth, fineHeight));
     const outside = this.outside;
     const inside = this.inside;
-    for (let i = 0; i < count; i++) {
-      const covered = pixels[i * 4 + 3] >= 128;
+    for (let i = 0; i < fineCount; i++) {
+      const covered = fine[i * 4 + 3] >= 128;
       outside[i] = covered ? 0 : FAR;
       inside[i] = covered ? FAR : 0;
     }
-    this.transform(outside, width, height);
-    this.transform(inside, width, height);
+    this.transform(outside, fineWidth, fineHeight);
+    this.transform(inside, fineWidth, fineHeight);
 
-    for (let i = 0; i < count; i++) {
-      const coverage = pixels[i * 4 + 3] / 255;
-      // pixel centers sit half a pixel from the edge between them
-      let distance =
-        coverage >= 0.5
-          ? 0.5 - Math.sqrt(inside[i])
-          : Math.sqrt(outside[i]) - 0.5;
-      // antialiased pixels know better where the edge crosses them
-      if (coverage > 0 && coverage < 1 && Math.abs(distance) <= 1) {
-        distance = 0.5 - coverage;
+    // the field is nearly linear inside a block, its average is the value at the center
+    const blockArea = scale * scale;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let sum = 0;
+        for (let fineY = y * scale; fineY < (y + 1) * scale; fineY++) {
+          const row = fineY * fineWidth;
+          for (let fineX = x * scale; fineX < (x + 1) * scale; fineX++) {
+            const fineIndex = row + fineX;
+            // pixel centers sit half a pixel from the edge between them
+            sum +=
+              fine[fineIndex * 4 + 3] >= 128
+                ? 0.5 - Math.sqrt(inside[fineIndex])
+                : Math.sqrt(outside[fineIndex]) - 0.5;
+          }
+        }
+        const i = y * width + x;
+        let distance = sum / blockArea / scale;
+        const coverage = pixels[i * 4 + 3] / 255;
+        // antialiased pixels know better where the edge crosses them
+        if (coverage > 0 && coverage < 1 && Math.abs(distance) <= 1) {
+          distance = 0.5 - coverage;
+        }
+        const value = 0.5 - distance / (spread * 2);
+        pixels[i * 4] = Math.round(Math.min(1, Math.max(0, value)) * 255);
+        pixels[i * 4 + 1] = 255;
+        pixels[i * 4 + 2] = 255;
       }
-      const value = 0.5 - distance / (spread * 2);
-      pixels[i * 4] = Math.round(Math.min(1, Math.max(0, value)) * 255);
-      pixels[i * 4 + 1] = 255;
-      pixels[i * 4 + 2] = 255;
     }
   }
 

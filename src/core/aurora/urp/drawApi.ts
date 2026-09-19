@@ -1,4 +1,5 @@
 import { COLOR } from "@/core/axiom/color";
+import { assert } from "@axiom/utils";
 import AssetManager, { AtlasPage, DEFAULT_FONT_NAME } from "../assetManager";
 import Font, { FontData, Glyph } from "../text/font";
 import TextLayout from "../text/textLayout";
@@ -8,109 +9,35 @@ import Material from "../material";
 import defaultMaterial from "./shaders/materials/default.wgsl?raw";
 import type DrawPass from "./passes/draw";
 import type { DrawWriter } from "./passes/draw";
-
-export type CornerRadius = number | [number, number, number, number];
-export interface DrawOutline {
-  width: number;
-  color: RGBA;
-}
-export type MaterialParams = [number, number, number, number];
-export type DrawAtlas = "world" | "ui";
-export type UvScope = "glyph" | "text";
+import type {
+  CornerRadius,
+  DrawAtlas,
+  DrawBackdrop,
+  DrawCircle,
+  DrawClip,
+  DrawEllipse,
+  DrawGlyph,
+  DrawGuiExtra,
+  DrawLine,
+  DrawOutline,
+  DrawQuad,
+  DrawRect,
+  DrawShadow,
+  DrawSprite,
+  DrawStyle,
+  DrawText,
+  DrawTextBox,
+  DrawTextStyle,
+  MaterialParams,
+  UvScope,
+} from "./urpTypes";
 
 export const DEFAULT_MATERIAL = Material.create({
   name: "drawDefault",
   fragment: defaultMaterial,
 });
-
-export interface DrawStyle {
-  color?: RGBA;
-  outline?: DrawOutline;
-  material?: Material;
-  params?: MaterialParams;
-  sort?: Position3D;
-}
-// like css box-shadow: blur is 2 sigma, spread grows the shape and its corners
-export interface DrawShadow {
-  color: RGBA;
-  offset?: Position2D;
-  blur?: number;
-  spread?: number;
-  inset?: boolean;
-}
-// like css backdrop-filter: blur is sigma (box-shadow blur above is 2 sigma), in canvas px
-export interface DrawBackdrop {
-  blur: number;
-}
-// first shadow of a list is on top, like in css
-export interface DrawGuiExtra {
-  shadow?: DrawShadow | DrawShadow[];
-  backdrop?: DrawBackdrop;
-}
 export interface DrawApiOptions {
   guiEffects?: boolean;
-}
-export interface DrawRect extends DrawStyle {
-  position: Position3D;
-  size: Size2D;
-  rotation?: number;
-  rounded?: CornerRadius;
-}
-export interface DrawCircle extends DrawStyle {
-  position: Position3D;
-  radius: number;
-}
-export interface DrawEllipse extends DrawStyle {
-  position: Position3D;
-  size: Size2D;
-  rotation?: number;
-}
-export type LineCap = "butt" | "round" | "square";
-export interface DrawLine extends DrawStyle {
-  from: Position2D;
-  to: Position2D;
-  z: number;
-  width: number;
-  cap?: LineCap;
-}
-export interface DrawSprite extends DrawStyle {
-  position: Position3D;
-  texture: string;
-  atlas?: DrawAtlas;
-  size?: Size2D;
-  crop?: Crop;
-  rotation?: number;
-  flipX?: boolean;
-  flipY?: boolean;
-  rounded?: CornerRadius;
-}
-export interface DrawQuad extends DrawStyle {
-  /** clockwise from top left, the texture corners follow this order */
-  points: [Position2D, Position2D, Position2D, Position2D];
-  /** sort only, does not move the quad on screen */
-  z: number;
-  texture?: string;
-  atlas?: DrawAtlas;
-  crop?: Crop;
-}
-export interface DrawGlyph extends DrawStyle {
-  position: Position3D;
-  font?: string;
-  char: string;
-  size?: number;
-}
-interface DrawTextStyle extends DrawStyle {
-  position: Position3D;
-  uvScope?: UvScope;
-}
-export interface DrawText extends DrawTextStyle {
-  font?: string;
-  text: string;
-  size?: number;
-  letterSpacing?: number;
-}
-export interface DrawTextBox extends DrawTextStyle {
-  scale?: number;
 }
 
 // must match SHAPE_* in draw.wgsl
@@ -143,8 +70,23 @@ const TRANSPARENT_SHAPE_MASK =
   (1 << SHAPE.INNER_SHADOW) |
   (1 << SHAPE.BACKDROP);
 
+// Clip in draw.wgsl: anchor, halfSize, radius, cos/sin of rotation, parent, pad
+export const CLIP = Object.freeze({
+  words: 12,
+  idBits: 16,
+  materialMask: 0xffff,
+  // must match MAX_CLIP_DEPTH in draw.wgsl
+  maxDepth: 8,
+});
+export interface ClipShape {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  radius: [number, number, number, number];
+}
 const UI_ATLAS = 0x80000000;
-const NO_PARAMS = Object.freeze([0, 0, 0, 0]) as MaterialParams;
 // glyph.radius packs the letter's uv-block size into 2x12 bit, see writeGlyph
 const UV_PACK = Object.freeze({ step: 4095, base: 4096 });
 const WHOLE_UV = UV_PACK.step + UV_PACK.step * UV_PACK.base;
@@ -169,6 +111,16 @@ interface TextLayer {
   outline: DrawOutline | null;
   shadow: DrawShadow | null;
 }
+interface ClipLevel {
+  id: number;
+  // aabb of this clip and all its parents, empty when they do not overlap
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+// covers the antialiasing margin and anchor snapping of an instance
+const CLIP_CULL_MARGIN = 2;
 interface EffectBox {
   x: number;
   y: number;
@@ -188,6 +140,16 @@ export class DrawApi<Extra extends object = {}> {
     isoSort: false,
     textShadow: false,
     textInset: false,
+    clipBalance: false,
+  };
+  private clipStack = { levels: [] as ClipLevel[], depth: 0 };
+  private clipShape: ClipShape = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    rotation: 0,
+    radius: [0, 0, 0, 0],
   };
   private textSortPoint: Position3D = { x: 0, y: 0, z: 0 };
   private shapeSortPoint: Position3D = { x: 0, y: 0, z: 0 };
@@ -231,7 +193,82 @@ export class DrawApi<Extra extends object = {}> {
     if (this.target === pass) this.target = null;
   }
   public beginFrame() {
+    if (this.clipStack.depth !== 0) this.warnClipBalance();
+    this.clipStack.depth = 0;
     this.target?.beginFrame();
+  }
+
+  // everything drawn until popClip is cut to this shape, nested clips intersect
+  public pushClip(props: DrawClip) {
+    const { position, size, rotation = 0, rounded = 0, inset = 0 } = props;
+    const shape = this.clipShape;
+    shape.width = Math.max(size.width - inset * 2, 0);
+    shape.height = Math.max(size.height - inset * 2, 0);
+    shape.x = position.x + inset;
+    shape.y = position.y + inset;
+    shape.rotation = rotation;
+    const outerMax = Math.min(size.width, size.height) / 2;
+    const innerMax = Math.min(shape.width, shape.height) / 2;
+    for (let i = 0; i < 4; i++) {
+      const corner = typeof rounded === "number" ? rounded : rounded[i];
+      const radius = Math.max(Math.min(corner, outerMax) - inset, 0);
+      shape.radius[i] = Math.min(radius, innerMax);
+    }
+
+    const stack = this.clipStack;
+    assert(
+      stack.depth < CLIP.maxDepth,
+      `${this.name}.pushClip: more than ${CLIP.maxDepth} nested clips`,
+    );
+    const parent = stack.depth > 0 ? stack.levels[stack.depth - 1] : null;
+    let level = stack.levels[stack.depth];
+    if (!level) {
+      level = { id: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 };
+      stack.levels.push(level);
+    }
+    stack.depth++;
+    level.id = this.target?.pushClip(shape, parent?.id ?? 0) ?? 0;
+
+    const halfWidth = shape.width / 2;
+    const halfHeight = shape.height / 2;
+    const cos = Math.abs(Math.cos(rotation));
+    const sin = Math.abs(Math.sin(rotation));
+    const extentX = cos * halfWidth + sin * halfHeight;
+    const extentY = sin * halfWidth + cos * halfHeight;
+    const centerX = shape.x + halfWidth;
+    const centerY = shape.y + halfHeight;
+    level.minX = Math.max(centerX - extentX, parent?.minX ?? -Infinity);
+    level.minY = Math.max(centerY - extentY, parent?.minY ?? -Infinity);
+    level.maxX = Math.min(centerX + extentX, parent?.maxX ?? Infinity);
+    level.maxY = Math.min(centerY + extentY, parent?.maxY ?? Infinity);
+    if (shape.width === 0 || shape.height === 0) level.maxX = level.minX;
+  }
+
+  public popClip() {
+    assert(
+      this.clipStack.depth > 0,
+      `${this.name}.popClip without a matching pushClip`,
+    );
+    this.clipStack.depth--;
+  }
+
+  private get currentClip() {
+    const stack = this.clipStack;
+    return stack.depth > 0 ? stack.levels[stack.depth - 1] : null;
+  }
+
+  // hot path: plain comparisons instead of AABB from axiom, which builds bound objects per call
+  private clippedAway(minX: number, minY: number, maxX: number, maxY: number) {
+    const clip = this.currentClip;
+    if (!clip) return false;
+    return (
+      clip.minX >= clip.maxX ||
+      clip.minY >= clip.maxY ||
+      maxX + CLIP_CULL_MARGIN < clip.minX ||
+      minX - CLIP_CULL_MARGIN > clip.maxX ||
+      maxY + CLIP_CULL_MARGIN < clip.minY ||
+      minY - CLIP_CULL_MARGIN > clip.maxY
+    );
   }
 
   public rect(props: DrawRect & Extra) {
@@ -386,11 +423,21 @@ export class DrawApi<Extra extends object = {}> {
     const color = props.color ?? COLOR.WHITE;
     if (color[3] === 0) return;
     const material = props.material ?? DEFAULT_MATERIAL;
-    const params = props.params ?? NO_PARAMS;
+    const params = props.params ?? material.defaults;
     const a = points[0];
     const b = points[1];
     const c = points[2];
     const d = points[3];
+    if (
+      this.clippedAway(
+        Math.min(a.x, b.x, c.x, d.x),
+        Math.min(a.y, b.y, c.y, d.y),
+        Math.max(a.x, b.x, c.x, d.x),
+        Math.max(a.y, b.y, c.y, d.y),
+      )
+    ) {
+      return;
+    }
 
     const centerX = (a.x + b.x + c.x + d.x) / 4;
     const minY = Math.min(a.y, b.y, c.y, d.y);
@@ -403,6 +450,7 @@ export class DrawApi<Extra extends object = {}> {
     const vert = pass.instance(
       this.isOpaque(SHAPE.QUAD, color),
       material,
+      this.currentClip?.id ?? 0,
       point.x,
       point.y,
       point.z,
@@ -454,7 +502,7 @@ export class DrawApi<Extra extends object = {}> {
       color = COLOR.WHITE,
       outline,
       material = DEFAULT_MATERIAL,
-      params = NO_PARAMS,
+      params = material.defaults,
       sort,
     } = props;
     const font: FontData = AssetManager.getFont(fontName, size);
@@ -490,7 +538,7 @@ export class DrawApi<Extra extends object = {}> {
       color = COLOR.WHITE,
       outline,
       material = DEFAULT_MATERIAL,
-      params = NO_PARAMS,
+      params = material.defaults,
       sort,
       uvScope = "glyph",
     } = props;
@@ -929,11 +977,30 @@ export class DrawApi<Extra extends object = {}> {
     if (color[3] === 0 && outlineWidth === 0) return null;
 
     const material = style.material ?? DEFAULT_MATERIAL;
-    const params = style.params ?? NO_PARAMS;
+    const params = style.params ?? material.defaults;
     const opaque = this.isOpaque(shape, color);
 
     const centerX = x + width / 2;
     const centerY = y + height / 2;
+    const clip = this.currentClip;
+    if (clip) {
+      // outer shadows reach past their box by params written later, only an empty clip drops them here
+      const reach = shape === SHAPE.SHADOW ? Infinity : 0;
+      const cos = Math.abs(Math.cos(rotation));
+      const sin = Math.abs(Math.sin(rotation));
+      const extentX = (cos * width + sin * height) / 2 + reach;
+      const extentY = (sin * width + cos * height) / 2 + reach;
+      if (
+        this.clippedAway(
+          centerX - extentX,
+          centerY - extentY,
+          centerX + extentX,
+          centerY + extentY,
+        )
+      ) {
+        return null;
+      }
+    }
     const anchor = pass.sort.anchor;
     let point: Position3D;
     if (style.sort) {
@@ -963,7 +1030,14 @@ export class DrawApi<Extra extends object = {}> {
       }
     }
 
-    const vert = pass.instance(opaque, material, point.x, point.y, point.z);
+    const vert = pass.instance(
+      opaque,
+      material,
+      clip?.id ?? 0,
+      point.x,
+      point.y,
+      point.z,
+    );
     vert.position(x, y);
     vert.size(width, height);
     vert.rotation(rotation);
@@ -993,6 +1067,14 @@ export class DrawApi<Extra extends object = {}> {
     console.warn(`${this.name}: inset shadows are not supported on text, skipped`);
   }
 
+  private warnClipBalance() {
+    if (this.warned.clipBalance) return;
+    this.warned.clipBalance = true;
+    console.warn(
+      `${this.name}: pushClip without popClip by the end of the frame, clips reset`,
+    );
+  }
+
   private warnIsoSort() {
     if (this.warned.isoSort) return;
     this.warned.isoSort = true;
@@ -1013,7 +1095,8 @@ export class DrawApi<Extra extends object = {}> {
   }
 }
 
-export const Draw = new DrawApi("Draw", "world");
-export const DrawGui = new DrawApi<DrawGuiExtra>("DrawGui", "ui", {
+// full instances for the preset and passes, games get the narrowed facades from ./draw
+export const worldDraw = new DrawApi("Draw", "world");
+export const guiDraw = new DrawApi<DrawGuiExtra>("DrawGui", "ui", {
   guiEffects: true,
 });

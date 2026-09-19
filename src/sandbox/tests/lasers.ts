@@ -1,5 +1,4 @@
-import { Draw } from "@/core/aurora2/urp/draw";
-import { MaterialParams } from "@/core/aurora2/urp/draw";
+import { Draw } from "@/core/aurora/urp/draw";
 import { COLOR } from "@/core/axiom/color";
 import AxiomMath from "@axiom/math";
 import Time from "@/core/engine/time";
@@ -23,12 +22,9 @@ const FAN_COLORS: RGBA[] = [
   COLOR.DODGER_BLUE,
   COLOR.HOT_PINK,
 ];
-const FAN_PARAMS: MaterialParams[] = FAN_COLORS.map((_, i) => [
-  1.1,
-  0.8 + i * 0.35,
-  0,
-  i * 3.7,
-]);
+const FAN_PARAMS = FAN_COLORS.map((_, i) =>
+  LASER_ELECTRIC.pack({ intensity: 1.1, speed: 0.8 + i * 0.35, seed: i * 3.7 }),
+);
 
 interface Bullet {
   x: number;
@@ -49,7 +45,11 @@ const BULLET_COLORS: RGBA[] = [
   COLOR.CYAN,
 ];
 // no scrolling, one dash as long as the bullet: bright head, fading tail
-const BULLET_PARAMS: MaterialParams = [1.4, 0, BULLET_LENGTH, 0];
+const BULLET_PARAMS = LASER_TRACER.pack({
+  intensity: 1.4,
+  speed: 0,
+  dashLength: BULLET_LENGTH,
+});
 const bullets: Bullet[] = [];
 let bulletTimer = 0;
 

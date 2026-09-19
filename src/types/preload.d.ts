@@ -1,5 +1,5 @@
 import { API } from "../preload/preload";
-import type { GraphTexture } from "../core/aurora2/renderGraph";
+import type { GraphTexture } from "../core/aurora/renderGraph";
 declare global {
   interface Window {
     API: typeof API;

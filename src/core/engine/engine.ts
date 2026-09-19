@@ -2,15 +2,11 @@ import "@/css/index.css";
 import { assert } from "@axiom/utils";
 import Time from "./time";
 import { debug } from "@debug";
-import Aurora from "@aurora/core";
-import Renderer from "@aurora/renderer/renderer";
-import AuroraDebugInfo from "@aurora/debugger/debugInfo";
-import Draw from "@aurora/draw";
 import FPSOverlay from "./fpsOverlay";
 import InputManager from "./inputManager";
 import Navi from "../navi/navi";
 import { Signal, SignalListeners } from "../axiom/events";
-import AuroraNew from "../aurora2/core";
+import Aurora from "@aurora/core";
 
 export default class Engine {
   declare private static canvas: HTMLCanvasElement;
@@ -34,13 +30,13 @@ export default class Engine {
     this.update = update ?? null;
     await this.setCanvas();
     InputManager.registerEvents();
-    await AuroraNew.init(this.canvas);
-    FPSOverlay.setGpuTimeSource(() => AuroraNew.getGpuTime);
-    // Navi.initialize();
+    await Aurora.init(this.canvas);
+    FPSOverlay.setGpuTimeSource(() => Aurora.getGpuTime);
+    Navi.initialize();
     Time.initTimer(performance.now());
     await preload();
     setup();
-    await AuroraNew.build();
+    await Aurora.build();
     this.signals.engineInit.emit(true);
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }
@@ -49,38 +45,18 @@ export default class Engine {
   }
   private static loop(currentTime: number) {
     Time.update(currentTime);
-    // AuroraDebugInfo.startCount(currentTime);
     InputManager.updateInputs();
-    // Navi.updateSystem();
-    AuroraNew.beginFrame();
+    Aurora.beginFrame();
+    Navi.updateSystem();
 
-    // Renderer.beginBatch();
-
-    // temporary for develop ========================
-    // Renderer.setGlobalIllumination([10, 0, 0]);
-    // Draw.rect({
-    //   position: { x: 100, y: 100, z: 1 },
-    //   size: { height: 100, width: 100 },
-    //   tint: [255, 0, 255, 255],
-    //   emissive: 3.7,
-    // });
-    // Draw.pointLight({
-    //   position: { x: 300, y: 300, z: 1 },
-    //   size: { height: 500, width: 500 },
-    //   tint: [255, 0, 255],
-    //   intensity: 100,
-    // });
     Time.switchToUpdateContext();
     this.update?.();
     //=================================
 
     // Pragma.update(); // pick one
     // Dogma.tickAll(); // pick one
-    // Navi.drawSystem();
-    // Renderer.endBatch();
-    // AuroraDebugInfo.endCount();
-    // debug.aurora.reportGPUData(AuroraDebugInfo.getAllData);
-    AuroraNew.endFrame();
+    Navi.drawSystem();
+    Aurora.endFrame();
     Time.endFrame();
     FPSOverlay.update();
 

@@ -3,19 +3,8 @@ import RenderGraph from "../renderGraph";
 import DrawPass from "./passes/draw";
 import PresentPass from "./passes/present";
 import PreviewPass from "./passes/preview";
-import { Draw, DrawGui } from "./draw";
-
-export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z" | "gx+gy+z";
-export type SortAnchor = "top" | "center" | "bottom";
-export interface URPSortConfig {
-  mode: SortMode;
-  anchor: SortAnchor;
-  step: { x: number; y: number; z: number };
-  zRange: [number, number];
-}
-export interface URPConfig {
-  sort: URPSortConfig;
-}
+import { guiDraw, worldDraw } from "./drawApi";
+import type { URPConfig, URPSortConfig } from "./urpTypes";
 
 const BASE_CONFIG: URPConfig = {
   sort: {
@@ -49,14 +38,14 @@ export default class URP {
         space: "world",
         target: "offscreenCanvas",
         sort,
-        api: Draw,
+        api: worldDraw,
       }),
       new DrawPass({
         name: "gui",
         space: "screen",
         target: "gui",
         sort: GUI_SORT,
-        api: DrawGui,
+        api: guiDraw,
         backdrop: "offscreenCanvas",
       }),
       new PresentPass(),
@@ -65,7 +54,7 @@ export default class URP {
   }
 
   public static beginFrame() {
-    Draw.beginFrame();
-    DrawGui.beginFrame();
+    worldDraw.beginFrame();
+    guiDraw.beginFrame();
   }
 }

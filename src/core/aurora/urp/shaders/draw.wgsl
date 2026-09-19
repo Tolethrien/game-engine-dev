@@ -56,9 +56,22 @@ struct SortParams {
 @group(1) @binding(5) var texSampler: sampler;
 @group(1) @binding(6) var fontNearest: sampler;
 @group(1) @binding(7) var fontLinear: sampler;
+// clip rect in draw space, id 0 is no clip; must match pushClip in passes/draw.ts
+struct Clip {
+  // top left corner before rotation, snapped like a shape anchor
+  anchor: vec2f,
+  halfSize: vec2f,
+  radius: vec4f,
+  // cos, sin, around the center like a rect
+  rotation: vec2f,
+  parent: u32,
+};
+// must match CLIP.maxDepth in passes/draw.ts
+const MAX_CLIP_DEPTH: u32 = 8u;
 @group(2) @binding(0) var<uniform> sortParams: SortParams;
 // gui: blur pyramid of scene + gui, mip 0 is half the canvas; world: 1x1 placeholder
 @group(2) @binding(1) var backdrop: texture_2d<f32>;
+@group(2) @binding(2) var<storage, read> clips: array<Clip>;
 override linearColors: bool = true;
 override depthSort: bool = false;
 override opaquePass: bool = false;
@@ -88,6 +101,13 @@ fn worldToPixel(anchor: vec2f, offset: vec2f) -> vec2f {
   let s = sin(camera.rotation);
   return vec2f(rel.x * c - rel.y * s, rel.x * s + rel.y * c) + center;
 }
+// the anchor worldToPixel puts on screen, still in draw space (world units or canvas px)
+fn snapAnchor(anchor: vec2f) -> vec2f {
+  if (screenSpace) {
+    return floor(anchor + 0.5);
+  }
+  return floor(anchor * camera.zoom + 0.5) / camera.zoom;
+}
 // larger key is closer, must match sortKey in passes/draw.ts
 fn sortDepth(point: vec3f) -> f32 {
   let sorted = vec3f(point.x, select(point.y, point.x + point.y + point.z, isoSort), point.z);
@@ -111,6 +131,15 @@ fn ellipse(p: vec2f, radius: vec2f) -> f32 {
     -min(radius.x, radius.y),
     k1 < 0.000001,
   );
+}
+
+// canvas antialiasing expects srgb blending, our targets are linear
+fn textCoverage(coverage: f32, color: vec4f) -> f32 {
+  let rgb = color.rgb / max(color.a, 0.0001);
+  let luma = dot(rgb, vec3f(0.2126, 0.7152, 0.0722));
+  let light = pow(coverage, 2.2);
+  let dark = 1.0 - pow(1.0 - coverage, 2.2);
+  return mix(dark, light, luma);
 }
 
 fn pixelToClip(pixel: vec2f) -> vec4f {
@@ -230,6 +259,7 @@ struct InstanceIn {
   @location(9) layer: u32,
   @location(10) sortPoint: vec3f,
   @location(11) params: vec4f,
+  @location(12) materialClip: u32,
 };
 
 struct VertexOut {
@@ -248,6 +278,9 @@ struct VertexOut {
   @location(10) @interpolate(flat) quadB: vec2f,
   @location(11) @interpolate(flat) quadC: vec2f,
   @location(12) @interpolate(flat) quadD: vec2f,
+  @location(13) @interpolate(flat) clip: u32,
+  // draw space position of the rendered pixel, clips are tested against it
+  @location(14) clipPoint: vec2f,
 };
 
 @vertex
@@ -269,6 +302,7 @@ fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> Vertex
     let bottom = select(d, c, corner.x > 0.0);
     let point = select(top, bottom, corner.y > 0.0);
     out.position = pixelToClip(worldToPixel(a, point - a));
+    out.clipPoint = snapAnchor(a) + point - a;
     out.local = point - a;
     out.halfSize = vec2f(length(b - a), length(d - a)) * 0.5;
     out.quadB = b - a;
@@ -288,6 +322,7 @@ fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> Vertex
     let s = sin(instance.rotation);
     let rotated = vec2f(local.x * c - local.y * s, local.x * s + local.y * c);
     out.position = pixelToClip(worldToPixel(instance.position, halfSize + rotated));
+    out.clipPoint = snapAnchor(instance.position) + halfSize + rotated;
     out.local = local;
     out.halfSize = halfSize;
   }
@@ -301,6 +336,7 @@ fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> Vertex
   out.uvRect = instance.uvRect;
   out.layer = instance.layer;
   out.params = instance.params;
+  out.clip = instance.materialClip >> 16u;
   return out;
 }
 
@@ -383,8 +419,37 @@ fn backdropColor(pixel: vec2f, sigma: f32) -> vec4f {
   return color;
 }
 
+// the clip id is flat per primitive, so fwidth inside the loop sees the same path on the whole 2x2 quad
+fn clipCoverage(id: u32, point: vec2f) -> f32 {
+  var coverage = 1.0;
+  var current = id;
+  for (var depth = 0u; depth < MAX_CLIP_DEPTH && current != 0u; depth++) {
+    let clip = clips[current];
+    let offset = point - (snapAnchor(clip.anchor) + clip.halfSize);
+    let local = vec2f(
+      offset.x * clip.rotation.x + offset.y * clip.rotation.y,
+      offset.y * clip.rotation.x - offset.x * clip.rotation.y,
+    );
+    let dist = roundedBox(local, clip.halfSize, clip.radius);
+    // min, not a product: a child flush with its parent's edge would get that edge antialiased twice
+    coverage = min(coverage, clamp(0.5 - dist / max(fwidth(dist), 0.0001), 0.0, 1.0));
+    current = clip.parent;
+  }
+  return coverage;
+}
+
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
+  let clip = clipCoverage(in.clip, in.clipPoint);
+  // opaque writes depth, a pixel mostly cut away must not; discard keeps helpers for derivatives
+  if (clip < select(0.0001, 0.5, opaquePass)) {
+    discard;
+  }
+  let color = shade(in);
+  return select(color * clip, color, opaquePass);
+}
+
+fn shade(in: VertexOut) -> vec4f {
   let maskGlyph = in.shape == SHAPE_GLYPH || in.shape == SHAPE_GLYPH_OUTLINE || in.shape == SHAPE_GLYPH_SHADOW;
   let msdfGlyph = in.shape == SHAPE_MTSDF || in.shape == SHAPE_MTSDF_OUTLINE || in.shape == SHAPE_MTSDF_SHADOW;
   let glyph = maskGlyph || msdfGlyph;
@@ -459,7 +524,7 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
     // mtsdf has no coverage channel, it comes from the distance
     let covered = select(glyphCoverage, clamp(0.5 - glyphDist / glyphAa, 0.0, 1.0), msdfGlyph);
     // the outline layer paints no fill, the fill of the text comes later on top
-    texel = vec4f(select(covered, 0.0, glyphOutline));
+    texel = vec4f(select(textCoverage(covered, in.color), 0.0, glyphOutline));
   }
 
   if (in.shape == SHAPE_SHADOW || in.shape == SHAPE_INNER_SHADOW) {
@@ -488,9 +553,10 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
   input.reach = max(in.halfSize.x, in.halfSize.y);
   if (glyph) {
     // text outlines grow outwards, the letter itself stays untouched
-    // the ring starts at the letter edge, so it never covers the fill
+    // the ring reaches 1.5px under the letter, so its antialiased edge blends
+    // over a solid ring instead of leaving a seam of background
     let outer = clamp(0.5 - (glyphDist - in.outlineWidth) / glyphAa, 0.0, 1.0);
-    let inner = clamp(0.5 - glyphDist / glyphAa, 0.0, 1.0);
+    let inner = clamp(0.5 - (glyphDist + glyphAa * 1.5) / glyphAa, 0.0, 1.0);
     input.ring = select(0.0, outer - inner, glyphOutline);
     input.dist = glyphDist;
     input.reach = in.radius.x * pixelsPerGlyphTexel;

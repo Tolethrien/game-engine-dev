@@ -1,7 +1,7 @@
-import { Draw } from "@/core/aurora2/urp/draw";
+﻿import { Draw } from "@/core/aurora/urp/draw";
 import { COLOR } from "@/core/axiom/color";
-import TextBox from "@/core/aurora2/text/textBox";
-import TextLayout from "@/core/aurora2/text/textLayout";
+import TextBox from "@/core/aurora/text/textBox";
+import TextLayout from "@/core/aurora/text/textLayout";
 import { TEXT_GLOW, TEXT_RAINBOW } from "./materials";
 
 // the game only ever draws mtsdf text in world space (latoSdf, blackOpsSdf):
@@ -56,7 +56,6 @@ function materials() {
     text,
     size,
     material: TEXT_RAINBOW,
-    params: [0.4, 1, 0, 0],
   });
   Draw.text({
     position: { x: CENTER_X - width / 2, y: 530, z: 0 },
@@ -64,7 +63,6 @@ function materials() {
     text,
     size,
     material: TEXT_RAINBOW,
-    params: [0.4, 1, 0, 0],
     uvScope: "text",
   });
 
@@ -78,7 +76,6 @@ function materials() {
     size: glowSize,
     color: COLOR.HOT_PINK,
     material: TEXT_GLOW,
-    params: [7, 0.5, 0.6, 0],
   });
 }
 

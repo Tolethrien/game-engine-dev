@@ -1,6 +1,6 @@
-import type { Pass } from "@/core/aurora2/pass";
-import type { GraphTexture } from "@/core/aurora2/renderGraph";
-import type { GpuSteps } from "@/core/aurora2/timer";
+import type { Pass } from "@/core/aurora/pass";
+import type { GraphTexture } from "@/core/aurora/renderGraph";
+import type { GpuSteps } from "@/core/aurora/timer";
 
 export interface ILogger {
   log: (data: unknown) => void;

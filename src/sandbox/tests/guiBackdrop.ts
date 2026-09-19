@@ -1,5 +1,5 @@
-import Aurora from "@/core/aurora2/core";
-import { DrawGui } from "@/core/aurora2/urp/draw";
+import Aurora from "@/core/aurora/core";
+import { DrawGui } from "@/core/aurora/urp/draw";
 import { COLOR } from "@/core/axiom/color";
 
 const LAYOUT = {

@@ -1,4 +1,4 @@
-import type { GpuSteps } from "@/core/aurora2/timer";
+import type { GpuSteps } from "@/core/aurora/timer";
 import { AuroraDebugData, IAuroraModule } from "../interfaces";
 import { profilerState } from "../profilerState";
 

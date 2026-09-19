@@ -1,8 +1,8 @@
-import Aurora from "@/core/aurora2/core";
-import { DrawGui } from "@/core/aurora2/urp/draw";
+import Aurora from "@/core/aurora/core";
+import { DrawGui } from "@/core/aurora/urp/draw";
 import { COLOR } from "@/core/axiom/color";
-import TextBox from "@/core/aurora2/text/textBox";
-import TextLayout from "@/core/aurora2/text/textLayout";
+import TextBox from "@/core/aurora/text/textBox";
+import TextLayout from "@/core/aurora/text/textLayout";
 
 // the game ui only ever draws bitmap (built-in default font) or dynamic ttf
 // text: the hud is fixed on screen, so it never needs mtsdf's scale-free edge.

@@ -1,5 +1,5 @@
 import { For } from "solid-js";
-import type { GraphTexture } from "@/core/aurora2/renderGraph";
+import type { GraphTexture } from "@/core/aurora/renderGraph";
 import CollapsiblePanel, {
   PanelProps,
   Section,

@@ -12,6 +12,13 @@ export function loadImg(src: string) {
     image.onerror = () => rej(`image with src: ${src} couldn't be loaded`);
   });
 }
+export function isPlainObject(
+  value: unknown,
+): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
 export function deepMerge<T extends object>(
   target: T,
   source: DeepPartial<T>,
@@ -29,14 +36,8 @@ export function deepMerge<T extends object>(
         const sourceValue = source[key as keyof DeepPartial<T>];
         const targetValue = target[key as keyof T];
 
-        if (
-          sourceValue &&
-          typeof sourceValue === "object" &&
-          !Array.isArray(sourceValue) &&
-          targetValue &&
-          typeof targetValue === "object" &&
-          !Array.isArray(targetValue)
-        ) {
+        // class instances are values, merging them into a plain object loses their prototype
+        if (isPlainObject(sourceValue) && isPlainObject(targetValue)) {
           (output as any)[key] = deepMerge(
             targetValue as object,
             sourceValue as object,

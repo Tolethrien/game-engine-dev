@@ -1,13 +1,11 @@
-import FontGen from "@/core/aurora/renderer/fontGen";
 import AxiomMath from "@/core/axiom/math";
+import TextLayout from "@aurora/text/textLayout";
 import Navi from "../navi";
 import UINode, { KeyInput, NodeProps } from "../node";
 import { Style } from "../style";
 import { Tween, Tweens } from "../tween";
 import { auto } from "../units";
 import UIText from "./text";
-
-const AURORA_PIXEL_OFFSET = 8;
 
 export interface InputProps extends NodeProps {
   value?: string;
@@ -66,11 +64,11 @@ export default class UIInput extends UINode {
   }
 
   private widthOf(text: string, scale: number) {
-    return FontGen.measureText({
-      fontName: this.style.textFont,
-      fontSize: this.style.textSize * scale + AURORA_PIXEL_OFFSET,
+    return TextLayout.measure(
+      this.style.textFont,
       text,
-    }).width;
+      this.style.textSize * scale,
+    ).width;
   }
 
   /** raz na klatkę, przed pomiarem */

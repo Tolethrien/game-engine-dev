@@ -25,7 +25,7 @@ export default class SlotNode extends UINode {
         size: { width: auto(), height: auto() },
         style: {
           backgroundColor: [24, 24, 34, 245],
-          rounded: 0.15,
+          rounded: 10,
           layout: "stack",
           direction: "col",
           gap: 2,
@@ -45,7 +45,7 @@ export default class SlotNode extends UINode {
           input: "absorb",
           style: {
             backgroundColor: [70, 95, 150, 0],
-            rounded: 0.1,
+            rounded: 6,
             transitionMs: 90,
             layout: "stack",
             alignMain: "center",

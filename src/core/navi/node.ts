@@ -1,5 +1,13 @@
-import Draw from "@aurora/draw";
-import { Anchor, createStyle, mergeStyle, Style } from "./style";
+import { DrawGui as Draw } from "@aurora/urp/draw";
+import { COLOR } from "@axiom/color";
+import {
+  Anchor,
+  cloneStyle,
+  createStyle,
+  mergeStyle,
+  Style,
+  StyleOutline,
+} from "./style";
 import { px, toPx, Unit, UnitPosition2D, Units, UnitSize2D } from "./units";
 import Navi from "./navi";
 import { deepMerge } from "@axiom/utils";
@@ -146,22 +154,67 @@ export default class UINode {
   //main draw for basic node - can be super or override
   public draw(box: Box) {
     const style = this.paintStyle;
-    const position = { x: box.x, y: box.y };
-    const size = { width: box.w, height: box.h };
-    const { rounded, backgroundImage, backgroundImageCrop } = style;
-    const tint = this.fade(style.backgroundColor);
+    // the shader snaps the top left corner to a pixel, the size absorbs that snap
+    // so an edge pinned by the origin stays still while the box scales
+    const position = { x: Math.round(box.x), y: Math.round(box.y), z: 0 };
+    const size = {
+      width: box.x + box.w - position.x,
+      height: box.y + box.h - position.y,
+    };
+    const { rounded, backgroundImage, backgroundImageCrop, shadow, backdrop } =
+      style;
+    const color = this.fade(style.backgroundColor);
+    const outline = this.resolveOutline(style.outline);
+    const material = style.backgroundMaterial?.use;
+    const params = style.backgroundMaterial?.params;
     if (backgroundImage) {
-      Draw.guiRect({
+      Draw.sprite({
         position,
         size,
-        tint,
+        color,
         rounded,
-        background: backgroundImage,
+        outline,
+        shadow,
+        backdrop,
+        material,
+        params,
+        texture: backgroundImage,
+        atlas: "ui",
         crop: backgroundImageCrop,
       });
     } else {
-      Draw.guiRect({ position, size, tint, rounded });
+      Draw.rect({
+        position,
+        size,
+        color,
+        rounded,
+        outline,
+        shadow,
+        backdrop,
+        material,
+        params,
+      });
     }
+  }
+
+  // what text elements pass to Draw.text/textBox, the box keeps its own outline and material
+  protected get paintTextStyle() {
+    const style = this.paintStyle;
+    return {
+      color: this.fade(style.textColor),
+      outline: this.resolveOutline(style.textOutline),
+      shadow: style.textShadow,
+      material: style.textMaterial?.use,
+      params: style.textMaterial?.params,
+    };
+  }
+
+  private resolveOutline(outline: StyleOutline | undefined) {
+    if (!outline) return undefined;
+    return {
+      width: outline.width,
+      color: this.fade(outline.color ?? COLOR.WHITE),
+    };
   }
 
   public setActive(value: boolean) {
@@ -217,9 +270,6 @@ export default class UINode {
   public get indexInParent() {
     if (!this.parent) return -1;
     return this.parent.children.indexOf(this);
-  }
-  protected get paintTextColor(): RGBA {
-    return this.fade(this.paintStyle.textColor);
   }
 
   public measureSelf(scale: number) {
@@ -366,8 +416,8 @@ export default class UINode {
         return;
       }
 
-      this.blendFrom = structuredClone(previous);
-      this.painted = structuredClone(target);
+      this.blendFrom = cloneStyle(previous);
+      this.painted = cloneStyle(target);
       this.blendTo = target;
       this.blend = 0;
     }

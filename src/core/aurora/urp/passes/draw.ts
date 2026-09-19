@@ -14,11 +14,17 @@ import VertexLayout, {
   VertexFields,
   VertexWriter,
 } from "../../utils/vertexLayout";
-import { DEFAULT_MATERIAL, DrawApi, SHAPE } from "../draw";
+import {
+  CLIP,
+  ClipShape,
+  DEFAULT_MATERIAL,
+  DrawApi,
+  SHAPE,
+} from "../drawApi";
 import Material from "../../material";
 import shader from "../shaders/draw.wgsl?raw";
 import backdropShader from "../shaders/backdrop.wgsl?raw";
-import type { URPSortConfig } from "../urp";
+import type { URPSortConfig } from "../urpTypes";
 
 const INSTANCE_FIELDS = {
   position: "float32x2",
@@ -33,13 +39,14 @@ const INSTANCE_FIELDS = {
   layer: "uint32",
   sortPoint: "float32x3",
   params: "float32x4",
-  // cpu only, splits transparents into batches, not read by the shader
-  material: "uint32",
+  // material id (cpu only, splits transparents into batches) | clip id << 16
+  materialClip: "uint32",
 } satisfies VertexFields;
 const INSTANCE = new VertexLayout(INSTANCE_FIELDS, { stepMode: "instance" });
 const BINDS = {
   sort: { binding: 0, type: "uniform" },
   backdrop: { binding: 1, type: "texture" },
+  clips: { binding: 2, type: "storage", readOnly: true },
 } satisfies PassBindEntries;
 const BACKDROP_BINDS = {
   scene: { binding: 0, type: "texture" },
@@ -115,6 +122,7 @@ export default class DrawPass extends MultiPass {
   declare private transparentWriter: DrawWriter;
   declare private binds: PassBinds<typeof BINDS>;
   declare private sortBuffer: GPUBuffer;
+  declare private clips: GrowingBuffer;
   private keys = new Float64Array(64);
   private objectSortingRange = {
     minX: Infinity,
@@ -192,6 +200,12 @@ export default class DrawPass extends MultiPass {
     this.sorted = this.createBuffer(`${this.name}Sorted`);
     this.transparentWriter = INSTANCE.createWriter(this.transparent);
     this.binds = new PassBinds(this.name, BINDS);
+    this.clips = new GrowingBuffer({
+      label: `${this.name}Clips`,
+      stride: CLIP.words,
+      usage: GPUBufferUsage.STORAGE,
+    });
+    this.resetClips();
     this.sortBuffer = Aurora.device.createBuffer({
       label: `${this.name}Sort`,
       size: this.sortData.byteLength,
@@ -199,6 +213,10 @@ export default class DrawPass extends MultiPass {
     });
 
     const materials = Material.getAll;
+    assert(
+      materials.length <= CLIP.materialMask + 1,
+      `DrawPass "${this.name}": at most ${CLIP.materialMask + 1} materials, the rest of the instance word holds the clip id`,
+    );
     for (const material of materials) {
       assert(
         /fn\s+material\s*\(/.test(material.fragment),
@@ -320,6 +338,7 @@ export default class DrawPass extends MultiPass {
   public instance(
     opaque: boolean,
     material: Material,
+    clip: number,
     sortX: number,
     sortY: number,
     sortZ: number,
@@ -345,9 +364,35 @@ export default class DrawPass extends MultiPass {
     } else {
       writer.at(this.transparent.push());
     }
-    writer.material(id);
+    writer.materialClip((id | (clip << CLIP.idBits)) >>> 0);
     writer.sortPoint(sortX, sortY, sortZ);
     return writer;
+  }
+
+  // id 0 is no clip, the parent chain is walked in the shader
+  public pushClip(shape: ClipShape, parent: number) {
+    const id = this.clips.push();
+    assert(
+      id < 2 ** CLIP.idBits,
+      `DrawPass "${this.name}": more than ${2 ** CLIP.idBits - 1} clips in one frame`,
+    );
+    const base = id * CLIP.words;
+    const floats = this.clips.getFloats;
+    floats[base] = shape.x;
+    floats[base + 1] = shape.y;
+    floats[base + 2] = shape.width / 2;
+    floats[base + 3] = shape.height / 2;
+    floats.set(shape.radius, base + 4);
+    floats[base + 8] = Math.cos(shape.rotation);
+    floats[base + 9] = Math.sin(shape.rotation);
+    this.clips.getUints[base + 10] = parent;
+    return id;
+  }
+
+  private resetClips() {
+    this.clips.clear();
+    const base = this.clips.push() * CLIP.words;
+    this.clips.getFloats.fill(0, base, base + CLIP.words);
   }
 
   // the instance just written is a backdrop, gui draws in call order so its index stays
@@ -361,6 +406,7 @@ export default class DrawPass extends MultiPass {
     // sortTransparent (and its reserve) only runs on frames with transparents,
     // so a quiet-frame count on its own would never shrink this one back down
     this.sorted.clear();
+    this.resetClips();
     this.backdrops.length = 0;
     const range = this.objectSortingRange;
     range.minX = Infinity;
@@ -371,8 +417,10 @@ export default class DrawPass extends MultiPass {
 
   execute(_encoder: GPUCommandEncoder, ctx: MultiPassContext) {
     this.updateSort();
+    this.clips.upload();
     const binds = this.binds.get({
       sort: this.sortBuffer,
+      clips: this.clips.getBuffer,
       backdrop: this.backdropSource
         ? ctx.view(BACKDROP.temp)
         : this.placeholderView,
@@ -440,12 +488,13 @@ export default class DrawPass extends MultiPass {
     step.setVertexBuffer(0, buffer.getBuffer);
     const uints = buffer.getUints;
     const stride = INSTANCE.stride;
-    const material = INSTANCE.offsets.material;
+    const material = INSTANCE.offsets.materialClip;
+    const mask = CLIP.materialMask;
     let first = from;
     while (first < to) {
-      const id = uints[first * stride + material];
+      const id = uints[first * stride + material] & mask;
       let end = first + 1;
-      while (end < to && uints[end * stride + material] === id) end++;
+      while (end < to && (uints[end * stride + material] & mask) === id) end++;
       step.setPipeline(this.pipelines[id].transparent);
       step.draw(6, end - first, 0, first);
       first = end;
@@ -622,6 +671,7 @@ export default class DrawPass extends MultiPass {
     this.transparent.destroy();
     this.sorted.destroy();
     this.sortBuffer.destroy();
+    this.clips.destroy();
     this.placeholder?.destroy();
   }
 
@@ -757,6 +807,7 @@ export default class DrawPass extends MultiPass {
       opaque,
       transparent: this.transparent.getCount,
     };
+    counters.clips = this.clips.getCount - 1;
     if (this.backdropSource) {
       counters["backdrop groups"] = this.backdropGroupCount;
     }

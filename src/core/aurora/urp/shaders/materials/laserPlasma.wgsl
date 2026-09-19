@@ -1,7 +1,7 @@
-// params: x = intensity, y = speed, w = seed
+// params: x = intensity, y = speed, z = seed
 
 fn material(in: MaterialInput) -> vec4f {
-  let time = frame.time * in.params.y + in.params.w * 11.0;
+  let time = frame.time * in.params.y + in.params.z * 11.0;
   let along = in.local.x;
   let across = abs(in.local.y) / (in.size.y * 0.5);
 

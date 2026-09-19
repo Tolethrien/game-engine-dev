@@ -1,5 +1,6 @@
-import Aurora from "@/core/aurora2/core";
-import { DrawGui, DrawShadow } from "@/core/aurora2/urp/draw";
+import Aurora from "@/core/aurora/core";
+import { DrawGui } from "@/core/aurora/urp/draw";
+import type { DrawShadow } from "@/core/aurora/urp/urpTypes";
 import { COLOR } from "@/core/axiom/color";
 import { GLOW_ORB, ORB_SMALL, TEXT_RAINBOW } from "./materials";
 

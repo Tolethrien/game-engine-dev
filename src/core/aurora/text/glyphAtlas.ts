@@ -1,5 +1,5 @@
 import Aurora from "../core";
-import DistanceField from "./distanceField";
+import DistanceField, { GlyphField } from "./distanceField";
 
 export interface AtlasSlot {
   layer: number;
@@ -52,11 +52,12 @@ export default class GlyphAtlas {
     pixels: Uint8ClampedArray,
     width: number,
     height: number,
+    field: GlyphField = { data: pixels, scale: 1 },
   ): StoredGlyph | null {
     const slot = this.allocate(width, height);
     if (!slot) return null;
 
-    DistanceField.encode(pixels, width, height, this.spread);
+    DistanceField.encode(pixels, width, height, this.spread, field);
     Aurora.device.queue.writeTexture(
       {
         texture: this.texture,

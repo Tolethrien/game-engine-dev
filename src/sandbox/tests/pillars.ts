@@ -1,4 +1,4 @@
-import { Draw } from "@/core/aurora2/urp/draw";
+import { Draw } from "@/core/aurora/urp/draw";
 import { COLOR } from "@/core/axiom/color";
 
 const PILLARS = [

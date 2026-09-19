@@ -1,4 +1,4 @@
-import { DrawGui } from "@/core/aurora2/urp/draw";
+import { DrawGui } from "@/core/aurora/urp/draw";
 import { COLOR } from "@/core/axiom/color";
 import { GLOW_ORB, ORB_SMALL } from "./materials";
 

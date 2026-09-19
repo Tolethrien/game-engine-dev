@@ -1,5 +1,5 @@
-import { Draw } from "@/core/aurora2/urp/draw";
-import URP from "@/core/aurora2/urp/urp";
+import { Draw } from "@/core/aurora/urp/draw";
+import URP from "@/core/aurora/urp/urp";
 import { COLOR } from "@/core/axiom/color";
 import Time from "@/core/engine/time";
 
