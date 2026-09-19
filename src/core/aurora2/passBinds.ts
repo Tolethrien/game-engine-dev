@@ -36,7 +36,7 @@ interface CachedBindGroup {
   resources: BindResourceValue[];
   bindGroup: GPUBindGroup;
 }
-const CACHE_SIZE = 4;
+const DEFAULT_CACHE_SIZE = 4;
 const NO_VERTEX = GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE;
 
 export default class PassBinds<T extends PassBindEntries> {
@@ -44,11 +44,14 @@ export default class PassBinds<T extends PassBindEntries> {
   private readonly label: string;
   private readonly entries: T;
   private readonly names: (keyof T)[];
+  private readonly cacheSize: number;
   private cache: CachedBindGroup[] = [];
 
-  constructor(label: string, entries: T) {
+  // passes cycling through more combinations per frame (one per mip level) need a larger cache
+  constructor(label: string, entries: T, cacheSize = DEFAULT_CACHE_SIZE) {
     this.label = label;
     this.entries = entries;
+    this.cacheSize = cacheSize;
     this.names = Object.keys(entries) as (keyof T)[];
 
     const bindings: Set<number> = new Set();
@@ -98,7 +101,7 @@ export default class PassBinds<T extends PassBindEntries> {
     });
 
     this.cache.push({ resources: values, bindGroup });
-    if (this.cache.length > CACHE_SIZE) this.cache.shift();
+    if (this.cache.length > this.cacheSize) this.cache.shift();
     return bindGroup;
   }
 

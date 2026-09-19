@@ -57,6 +57,7 @@ export default class URP {
         target: "gui",
         sort: GUI_SORT,
         api: DrawGui,
+        backdrop: "offscreenCanvas",
       }),
       new PresentPass(),
       new PreviewPass({ texture: "canvas" }),

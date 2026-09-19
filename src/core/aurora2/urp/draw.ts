@@ -38,12 +38,17 @@ export interface DrawShadow {
   spread?: number;
   inset?: boolean;
 }
+// like css backdrop-filter: blur is sigma (box-shadow blur above is 2 sigma), in canvas px
+export interface DrawBackdrop {
+  blur: number;
+}
 // first shadow of a list is on top, like in css
 export interface DrawGuiExtra {
   shadow?: DrawShadow | DrawShadow[];
+  backdrop?: DrawBackdrop;
 }
 export interface DrawApiOptions {
-  shadows?: boolean;
+  guiEffects?: boolean;
 }
 export interface DrawRect extends DrawStyle {
   position: Position3D;
@@ -109,7 +114,7 @@ export interface DrawTextBox extends DrawTextStyle {
 }
 
 // must match SHAPE_* in draw.wgsl
-const SHAPE = Object.freeze({
+export const SHAPE = Object.freeze({
   BOX: 0,
   ELLIPSE: 1,
   QUAD: 2,
@@ -121,6 +126,7 @@ const SHAPE = Object.freeze({
   INNER_SHADOW: 8,
   GLYPH_SHADOW: 9,
   MTSDF_SHADOW: 10,
+  BACKDROP: 11,
 });
 // new glyph shapes must be added here, order of SHAPE no longer matters
 const GLYPH_SHAPE_MASK =
@@ -132,7 +138,10 @@ const GLYPH_SHAPE_MASK =
   (1 << SHAPE.MTSDF_SHADOW);
 // never take the opaque path: antialiased or soft by nature
 const TRANSPARENT_SHAPE_MASK =
-  GLYPH_SHAPE_MASK | (1 << SHAPE.SHADOW) | (1 << SHAPE.INNER_SHADOW);
+  GLYPH_SHAPE_MASK |
+  (1 << SHAPE.SHADOW) |
+  (1 << SHAPE.INNER_SHADOW) |
+  (1 << SHAPE.BACKDROP);
 
 const UI_ATLAS = 0x80000000;
 const NO_PARAMS = Object.freeze([0, 0, 0, 0]) as MaterialParams;
@@ -160,7 +169,7 @@ interface TextLayer {
   outline: DrawOutline | null;
   shadow: DrawShadow | null;
 }
-interface ShadowBox {
+interface EffectBox {
   x: number;
   y: number;
   width: number;
@@ -190,8 +199,8 @@ export class DrawApi<Extra extends object = {}> {
   private textCodes = { source: null as string | null, codes: [] as number[] };
   private textRun = new TextRun();
   private textLayerList = { layers: [] as TextLayer[], pool: [] as TextLayer[] };
-  private shadowStyle: DrawStyle = {};
-  private shadowBox: ShadowBox = {
+  private effectScratch: DrawStyle = {};
+  private effectBox: EffectBox = {
     x: 0,
     y: 0,
     width: 0,
@@ -203,16 +212,16 @@ export class DrawApi<Extra extends object = {}> {
   };
   private readonly name: string;
   private readonly atlas: DrawAtlas;
-  private readonly shadows: boolean;
+  private readonly guiEffects: boolean;
 
   constructor(
     name: string,
     atlas: DrawAtlas,
-    { shadows = false }: DrawApiOptions = {},
+    { guiEffects = false }: DrawApiOptions = {},
   ) {
     this.name = name;
     this.atlas = atlas;
-    this.shadows = shadows;
+    this.guiEffects = guiEffects;
   }
 
   public setTarget(pass: DrawPass) {
@@ -228,7 +237,7 @@ export class DrawApi<Extra extends object = {}> {
   public rect(props: DrawRect & Extra) {
     const { position, size, rotation = 0, rounded = 0 } = props;
     const maxRadius = Math.min(size.width, size.height) / 2;
-    const box = this.boxShadows(
+    const box = this.boxEffects(
       props,
       position.x,
       position.y,
@@ -258,7 +267,7 @@ export class DrawApi<Extra extends object = {}> {
     const size = radius * 2;
     const x = position.x - radius;
     const y = position.y - radius;
-    const box = this.boxShadows(
+    const box = this.boxEffects(
       props,
       x,
       y,
@@ -341,8 +350,8 @@ export class DrawApi<Extra extends object = {}> {
     const height = size?.height ?? crop?.height ?? page.height;
     const maxRadius = Math.min(width, height) / 2;
 
-    // the shadow of a sprite is the shadow of its box, not of its texture alpha
-    const box = this.boxShadows(
+    // shadow and backdrop of a sprite follow its box, not its texture alpha
+    const box = this.boxEffects(
       props,
       position.x,
       position.y,
@@ -531,7 +540,7 @@ export class DrawApi<Extra extends object = {}> {
     shadow: DrawShadow | DrawShadow[] | undefined,
   ): readonly TextLayer[] {
     this.textLayerList.layers.length = 0;
-    if (this.shadows && shadow) {
+    if (this.guiEffects && shadow) {
       if (!Array.isArray(shadow)) this.pushShadowLayer(shadow);
       else {
         for (let i = shadow.length - 1; i >= 0; i--) {
@@ -727,8 +736,9 @@ export class DrawApi<Extra extends object = {}> {
     return scratch;
   }
 
-  // outer shadows go under the box right away, the box is returned for the inner ones after it
-  private boxShadows(
+  // outer shadows and the backdrop go under the box right away,
+  // the box is returned when inner shadows still follow it
+  private boxEffects(
     props: DrawStyle,
     x: number,
     y: number,
@@ -739,8 +749,10 @@ export class DrawApi<Extra extends object = {}> {
     rounded: CornerRadius,
     maxRadius: number,
   ) {
-    if (!this.shadows || !(props as DrawGuiExtra).shadow) return null;
-    const box = this.shadowBox;
+    if (!this.guiEffects) return null;
+    const { shadow, backdrop } = props as DrawGuiExtra;
+    if (!shadow && !backdrop) return null;
+    const box = this.effectBox;
     box.x = x;
     box.y = y;
     box.width = width;
@@ -749,11 +761,45 @@ export class DrawApi<Extra extends object = {}> {
     box.z = z;
     box.rounded = rounded;
     box.maxRadius = maxRadius;
-    this.writeShadows(props, box, false);
-    return box;
+    if (shadow) this.writeShadows(props, box, false);
+    if (backdrop) this.writeBackdrop(props, box, backdrop);
+    return shadow ? box : null;
   }
 
-  private writeShadows(props: DrawStyle, box: ShadowBox, inset: boolean) {
+  private writeBackdrop(
+    props: DrawStyle,
+    box: EffectBox,
+    backdrop: DrawBackdrop,
+  ) {
+    const style = this.effectStyle(props, COLOR.WHITE);
+    const vert = this.instance(
+      SHAPE.BACKDROP,
+      box.x,
+      box.y,
+      box.width,
+      box.height,
+      box.rotation,
+      box.z,
+      style,
+    );
+    if (!vert) return;
+    this.writeCorners(vert, box.rounded, box.maxRadius);
+    vert.params(Math.max(backdrop.blur, 0), 0, 0, 0);
+    this.target!.markBackdrop();
+  }
+
+  // same material keeps the batch, an additive pipeline would add the effect instead
+  private effectStyle(props: DrawStyle, color: RGBA) {
+    const material = props.material ?? DEFAULT_MATERIAL;
+    const style = this.effectScratch;
+    style.color = color;
+    style.material =
+      material.blend === "additive" ? DEFAULT_MATERIAL : material;
+    style.sort = props.sort;
+    return style;
+  }
+
+  private writeShadows(props: DrawStyle, box: EffectBox, inset: boolean) {
     const shadow = (props as DrawGuiExtra).shadow!;
     if (!Array.isArray(shadow)) {
       this.writeShadow(props, box, shadow, inset);
@@ -766,18 +812,12 @@ export class DrawApi<Extra extends object = {}> {
 
   private writeShadow(
     props: DrawStyle,
-    box: ShadowBox,
+    box: EffectBox,
     shadow: DrawShadow,
     inset: boolean,
   ) {
     if ((shadow.inset ?? false) !== inset) return;
-    const material = props.material ?? DEFAULT_MATERIAL;
-    const style = this.shadowStyle;
-    style.color = shadow.color;
-    // same material keeps the batch, an additive pipeline would add the shadow instead
-    style.material =
-      material.blend === "additive" ? DEFAULT_MATERIAL : material;
-    style.sort = props.sort;
+    const style = this.effectStyle(props, shadow.color);
     const vert = this.instance(
       inset ? SHAPE.INNER_SHADOW : SHAPE.SHADOW,
       box.x,
@@ -975,5 +1015,5 @@ export class DrawApi<Extra extends object = {}> {
 
 export const Draw = new DrawApi("Draw", "world");
 export const DrawGui = new DrawApi<DrawGuiExtra>("DrawGui", "ui", {
-  shadows: true,
+  guiEffects: true,
 });

@@ -22,6 +22,7 @@ import { sortTest } from "@sandbox/tests/sort";
 import { quadTest } from "@sandbox/tests/quad";
 import { guiTest } from "@sandbox/tests/gui";
 import { guiShadowTest } from "@sandbox/tests/guiShadow";
+import { guiBackdropTest } from "@sandbox/tests/guiBackdrop";
 import { textWorldTest } from "@sandbox/tests/textWorld";
 import { textGuiTest } from "@sandbox/tests/textGui";
 import { isoTest } from "@sandbox/tests/iso";
@@ -99,7 +100,8 @@ function update() {
   // sortTest(t);
   // quadTest(t);
   // guiTest(t);
-  guiShadowTest(t);
+  // guiShadowTest(t);
+  // guiBackdropTest(t);
   // textWorldTest(t);
   // textGuiTest(t);
   // isoTest(t);

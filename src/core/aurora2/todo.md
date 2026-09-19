@@ -97,7 +97,10 @@ kerning
 - draw Origin
 - tone mapping
 - gui pass pelny: outliny i takie tam... (shadowbox i innershadow sa w `DrawGui.shadow`)
-- **Efekty warstwy GUI** (osobny pass): drop-shadow/glow calego poddrzewa GUI, cien z alfy tekstury sprite'a, blur tla ("frosted glass").
+- **Efekty warstwy GUI** (osobny pass): drop-shadow/glow calego poddrzewa GUI, cien z alfy tekstury sprite'a. Blur tla jest w `DrawGui.backdrop`.
+- **Backdrop: inne filtry** (`brightness`, `contrast`, `saturate`, `hue-rotate`, `invert`, `sepia`) — ta sama gałąź shadera, parametry mieszczą się w wolnych polach instancji (`uvRect`, `outlineWidth`, reszta `params`). Kolejność filtrów byłaby stała, nie jak w CSS.
+- **Backdrop: koszt** rośnie z liczbą grup, nie pikseli: grupa to ~7 zależnych, małych kroków GPU (koniec `draw`, zrzut, do 5 mipów, wznowienie) + przejście `gui` z render targetu na teksturę. Test w sandboxie: 5 grup ≈ +0,7–2,4 ms, przy `blur: 3` (mniej poziomów) wyraźnie taniej. Do zrobienia przy konsolidacji: rozmycie separowalne (2 kroki zamiast piramidy), lepsze grupowanie (niżej), timestampy per krok tylko przy otwartym profilerze.
+- **Backdrop: grupowanie** po sumie AABB. Siatka szkieł z zawartością może dawać więcej grup niż trzeba (licznik `backdrop groups`); ewentualnie lista prostokątów zamiast sumy.
 - scizzorowanie maskami i rectem!
 - drawBatch: przyklad z kulek, caly chunk w sumie to praktycznie ledwo zmienione dane w liscie, rownie dobrze moge przekazac cala ta liste, a nie robic 622 razy Draw.sprite... mega dobre dla procesora
 

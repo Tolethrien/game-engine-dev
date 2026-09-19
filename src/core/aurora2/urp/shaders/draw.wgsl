@@ -32,6 +32,10 @@ const SHAPE_INNER_SHADOW: u32 = 8u;
 // gui text shadow: glyph quad moved by the offset, blur in outlineWidth, params.x = spread
 const SHAPE_GLYPH_SHADOW: u32 = 9u;
 const SHAPE_MTSDF_SHADOW: u32 = 10u;
+// gui backdrop-filter: box geometry, params.x = blur sigma, samples the blurred snapshot of what is behind
+const SHAPE_BACKDROP: u32 = 11u;
+// blur sigma of a backdrop level in its own texels, must match BACKDROP.sigmaPerTexel in passes/draw.ts
+const BACKDROP_SIGMA: f32 = 0.8;
 struct SortParams {
   // per axis: x, y, z
   origin: vec3f,
@@ -53,6 +57,8 @@ struct SortParams {
 @group(1) @binding(6) var fontNearest: sampler;
 @group(1) @binding(7) var fontLinear: sampler;
 @group(2) @binding(0) var<uniform> sortParams: SortParams;
+// gui: blur pyramid of scene + gui, mip 0 is half the canvas; world: 1x1 placeholder
+@group(2) @binding(1) var backdrop: texture_2d<f32>;
 override linearColors: bool = true;
 override depthSort: bool = false;
 override opaquePass: bool = false;
@@ -339,6 +345,44 @@ fn shadowCoverage(in: VertexOut, dist: f32, aa: f32, shape: f32) -> f32 {
   return mask * (1.0 - blurred);
 }
 
+// cubic b-spline from 4 bilinear taps, a plain bilinear read of a small level shows its texels
+fn backdropSample(uv: vec2f, level: f32) -> vec4f {
+  let size = vec2f(textureDimensions(backdrop, u32(level)));
+  let position = uv * size - 0.5;
+  let base = floor(position);
+  let f = position - base;
+  let f2 = f * f;
+  let f3 = f2 * f;
+  let w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+  let w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+  let w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+  let w3 = f3 / 6.0;
+  let g0 = w0 + w1;
+  let g1 = w2 + w3;
+  // each tap lands between two texel centers by the ratio of their weights
+  let low = (base - 0.5 + w1 / g0) / size;
+  let high = (base + 1.5 + w3 / g1) / size;
+  let a = textureSampleLevel(backdrop, texSampler, low, level);
+  let b = textureSampleLevel(backdrop, texSampler, vec2f(high.x, low.y), level);
+  let c = textureSampleLevel(backdrop, texSampler, vec2f(low.x, high.y), level);
+  let d = textureSampleLevel(backdrop, texSampler, high, level);
+  return g0.y * (g0.x * a + g1.x * b) + g1.y * (g0.x * c + g1.x * d);
+}
+
+fn backdropColor(pixel: vec2f, sigma: f32) -> vec4f {
+  let uv = pixel / frame.canvasSize;
+  let top = f32(textureNumLevels(backdrop) - 1u);
+  // must match backdropLevel in passes/draw.ts
+  let level = clamp(log2(max(sigma, 0.0001) / BACKDROP_SIGMA) - 1.0, 0.0, top);
+  let low = floor(level);
+  var color = backdropSample(uv, low);
+  // levels above what the group needed hold stale data, even at zero weight a NaN would leak
+  if (level > low) {
+    color = mix(color, backdropSample(uv, low + 1.0), level - low);
+  }
+  return color;
+}
+
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
   let maskGlyph = in.shape == SHAPE_GLYPH || in.shape == SHAPE_GLYPH_OUTLINE || in.shape == SHAPE_GLYPH_SHADOW;
@@ -420,6 +464,10 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
 
   if (in.shape == SHAPE_SHADOW || in.shape == SHAPE_INNER_SHADOW) {
     return in.color * shadowCoverage(in, dist, aa, shape);
+  }
+  if (in.shape == SHAPE_BACKDROP) {
+    // replaces what is behind inside the shape, the box drawn next tints it
+    return backdropColor(in.position.xy, in.params.x) * shape;
   }
   if (in.shape == SHAPE_GLYPH_SHADOW || in.shape == SHAPE_MTSDF_SHADOW) {
     // the field is no convolution, a smoothstep of +-blur fades about as wide as the box gaussian

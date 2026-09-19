@@ -1,16 +1,23 @@
 import { assert } from "@axiom/utils";
 import AxiomMath from "@axiom/math";
 import Aurora, { RenderPipelineOptions } from "../../core";
-import { PassResources, PassTargets, RenderPass } from "../../pass";
+import {
+  MultiPass,
+  MultiPassContext,
+  PassFormats,
+  PassResources,
+  PipelineTargets,
+} from "../../pass";
 import PassBinds, { PassBindEntries } from "../../passBinds";
 import GrowingBuffer from "../../utils/growingBuffer";
 import VertexLayout, {
   VertexFields,
   VertexWriter,
 } from "../../utils/vertexLayout";
-import { DEFAULT_MATERIAL, DrawApi } from "../draw";
+import { DEFAULT_MATERIAL, DrawApi, SHAPE } from "../draw";
 import Material from "../../material";
 import shader from "../shaders/draw.wgsl?raw";
+import backdropShader from "../shaders/backdrop.wgsl?raw";
 import type { URPSortConfig } from "../urp";
 
 const INSTANCE_FIELDS = {
@@ -32,7 +39,24 @@ const INSTANCE_FIELDS = {
 const INSTANCE = new VertexLayout(INSTANCE_FIELDS, { stepMode: "instance" });
 const BINDS = {
   sort: { binding: 0, type: "uniform" },
+  backdrop: { binding: 1, type: "texture" },
 } satisfies PassBindEntries;
+const BACKDROP_BINDS = {
+  scene: { binding: 0, type: "texture" },
+  gui: { binding: 1, type: "texture" },
+  source: { binding: 2, type: "texture" },
+} satisfies PassBindEntries;
+// blur pyramid under gui backdrops: mip 0 is half the canvas, so a texel of level i spans 2^(i+1) px
+const BACKDROP = Object.freeze({
+  temp: "backdrop",
+  levels: 6,
+  // blur sigma of a level in its own texels, must match BACKDROP_SIGMA in draw.wgsl
+  sigmaPerTexel: 0.8,
+  // gaussian reach used to decide whether a backdrop still sees the same snapshot
+  reach: 3,
+  // top level texels kept around a group, garbage of earlier groups creeps in from the scissor edge
+  margin: 6,
+});
 export type DrawWriter = VertexWriter<typeof INSTANCE_FIELDS>;
 
 interface MaterialPipelines {
@@ -43,21 +67,42 @@ interface OpaqueBatch {
   buffer: GrowingBuffer;
   writer: DrawWriter;
 }
+interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+// backdrops sharing one snapshot of everything drawn before start
+interface BackdropGroup extends Bounds {
+  start: number;
+  // highest continuous pyramid level any member samples
+  top: number;
+}
+interface BackdropPipelines {
+  compose: GPURenderPipeline;
+  downsample: GPURenderPipeline;
+}
 export interface DrawPassOptions {
   name: string;
   space: "world" | "screen";
   target: string;
   sort: URPSortConfig;
-  api: DrawApi;
+  api: DrawApi<any>;
+  // texture under the target, composed with it into the snapshot a gui backdrop blurs
+  backdrop?: string;
 }
 
-export default class DrawPass extends RenderPass {
+export default class DrawPass extends MultiPass {
   private static readonly MATERIAL_MARKER = "// MATERIAL";
   public readonly name: string;
   public readonly sort: URPSortConfig;
   private readonly space: DrawPassOptions["space"];
   private readonly target: string;
-  private readonly facade: DrawApi;
+  private readonly facade: DrawApi<any>;
+  private readonly depthName: string;
+  private readonly backdropSource: string | null;
+  private readonly backdropLabels: string[];
   // axis indices (x 0, y 1, z 2), most significant first
   private readonly sortAxes: number[];
   // "gx+gy+z": slot y carries gx + gy + z (the diagonal), not sortPoint.y
@@ -87,14 +132,37 @@ export default class DrawPass extends RenderPass {
   };
   // SortParams in draw.wgsl: each row is vec3f + f32
   private sortData = new Float32Array(16);
+  private clearColor: GPUColor = [0, 0, 0, 0];
+  // transparent indices of backdrop instances, in call order
+  private backdrops: number[] = [];
+  private backdropGroups: BackdropGroup[] = [];
+  private backdropGroupCount = 0;
+  private scratchBounds: Bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  // everything drawn since the snapshot of the open group
+  private drawnBounds: Bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  declare private backdropBinds: PassBinds<typeof BACKDROP_BINDS>;
+  declare private backdropPipelines: BackdropPipelines;
+  // world shares the shader and the group 2 layout, but has no backdrop to bind
+  private placeholder: GPUTexture | null = null;
+  declare private placeholderView: GPUTextureView;
 
-  constructor({ name, space, target, sort, api }: DrawPassOptions) {
+  constructor({ name, space, target, sort, api, backdrop }: DrawPassOptions) {
     super();
+    assert(
+      backdrop === undefined || space === "screen",
+      `DrawPass "${name}": backdrop needs space "screen", its bounds are canvas pixels`,
+    );
     this.name = name;
     this.space = space;
     this.target = target;
     this.facade = api;
     this.sort = sort;
+    this.depthName = `${name}Depth`;
+    this.backdropSource = backdrop ?? null;
+    this.backdropLabels = Array.from(
+      { length: BACKDROP.levels },
+      (_, level) => `backdrop:mip${level}`,
+    );
     this.isoSort = sort.mode === "gx+gy+z";
     this.sortAxes =
       sort.mode === "none"
@@ -115,7 +183,7 @@ export default class DrawPass extends RenderPass {
     return this.sort.mode !== "none";
   }
 
-  async setup(targets: PassTargets) {
+  async setup(targets: PassFormats) {
     assert(
       shader.includes(DrawPass.MATERIAL_MARKER),
       `draw.wgsl is missing the "${DrawPass.MATERIAL_MARKER}" marker`,
@@ -142,44 +210,89 @@ export default class DrawPass extends RenderPass {
       const buffer = this.createBuffer(`${this.name}Opaque:${material.name}`);
       return { buffer, writer: INSTANCE.createWriter(buffer) };
     });
-    this.pipelines = await Promise.all(
-      materials.map((material) => this.createPipelines(targets, material)),
-    );
+    const pipelineTargets: PipelineTargets = {
+      colors: [targets.formats.get(this.target)!],
+      depth: this.depthSorted ? targets.formats.get(this.depthName) : undefined,
+    };
+    const [pipelines] = await Promise.all([
+      Promise.all(
+        materials.map((material) =>
+          this.createPipelines(pipelineTargets, material),
+        ),
+      ),
+      this.setupBackdrop(targets),
+    ]);
+    this.pipelines = pipelines;
 
     this.facade.setTarget(this);
+  }
+
+  private async setupBackdrop(targets: PassFormats) {
+    if (!this.backdropSource) {
+      this.placeholder = Aurora.device.createTexture({
+        label: `${this.name}BackdropPlaceholder`,
+        size: [1, 1],
+        format: "rgba16float",
+        usage: GPUTextureUsage.TEXTURE_BINDING,
+      });
+      this.placeholderView = this.placeholder.createView();
+      return;
+    }
+    // one bind group per pyramid level, each reads the level below
+    this.backdropBinds = new PassBinds(
+      `${this.name}Backdrop`,
+      BACKDROP_BINDS,
+      BACKDROP.levels + 1,
+    );
+    const colors = [targets.formats.get(BACKDROP.temp)!];
+    const [compose, downsample] = await Promise.all(
+      [true, false].map((compose) =>
+        Aurora.createRenderPipeline(
+          { colors },
+          {
+            label: `${this.name}Backdrop${compose ? "Compose" : "Downsample"}`,
+            shader: backdropShader,
+            binds: this.backdropBinds.layout,
+            constants: { compose },
+          },
+        ),
+      ),
+    );
+    this.backdropPipelines = { compose, downsample };
   }
 
   resources(res: PassResources) {
     res.readAsset("albedo");
     res.readAsset("ui");
     res.readAsset("fonts");
+    // the first step of execute clears, a separate graph clear would cost an extra pass
     if (this.space === "screen") {
       res.sampler("linearClamp");
+      this.clearColor = [0, 0, 0, 0];
       res.create(
         this.target,
         { size: { scale: 1, base: "canvas" }, format: "rgba16float" },
-        { clearValue: [0, 0, 0, 0] },
+        { clear: false },
       );
     } else {
       const color = Aurora.getSettings.rendering.canvasColor;
       const alpha = color[3] / 255;
       res.sampler("nearestClamp");
+      this.clearColor = [
+        Aurora.colorChannel(color[0]) * alpha,
+        Aurora.colorChannel(color[1]) * alpha,
+        Aurora.colorChannel(color[2]) * alpha,
+        alpha,
+      ];
       res.create(
         this.target,
         { size: { scale: 1 }, format: "rgba16float" },
-        {
-          clearValue: [
-            Aurora.colorChannel(color[0]) * alpha,
-            Aurora.colorChannel(color[1]) * alpha,
-            Aurora.colorChannel(color[2]) * alpha,
-            alpha,
-          ],
-        },
+        { clear: false },
       );
     }
     if (this.depthSorted) {
       res.create(
-        `${this.name}Depth`,
+        this.depthName,
         {
           size:
             this.space === "screen"
@@ -187,7 +300,19 @@ export default class DrawPass extends RenderPass {
               : { scale: 1 },
           format: "depth32float",
         },
-        { depthClearValue: 1 },
+        { clear: false },
+      );
+    }
+    if (this.backdropSource) {
+      res.read(this.backdropSource);
+      res.temp(
+        BACKDROP.temp,
+        {
+          size: { scale: 0.5, base: "canvas" },
+          format: "rgba16float",
+          mips: BACKDROP.levels,
+        },
+        { clear: false },
       );
     }
   }
@@ -225,12 +350,18 @@ export default class DrawPass extends RenderPass {
     return writer;
   }
 
+  // the instance just written is a backdrop, gui draws in call order so its index stays
+  public markBackdrop() {
+    this.backdrops.push(this.transparent.getCount - 1);
+  }
+
   public beginFrame() {
     for (const batch of this.opaqueBatches) batch?.buffer.clear();
     this.transparent.clear();
     // sortTransparent (and its reserve) only runs on frames with transparents,
     // so a quiet-frame count on its own would never shrink this one back down
     this.sorted.clear();
+    this.backdrops.length = 0;
     const range = this.objectSortingRange;
     range.minX = Infinity;
     range.maxX = -Infinity;
@@ -238,9 +369,16 @@ export default class DrawPass extends RenderPass {
     range.maxY = -Infinity;
   }
 
-  execute(encoder: GPURenderPassEncoder) {
+  execute(_encoder: GPUCommandEncoder, ctx: MultiPassContext) {
     this.updateSort();
-    encoder.setBindGroup(2, this.binds.get({ sort: this.sortBuffer }));
+    const binds = this.binds.get({
+      sort: this.sortBuffer,
+      backdrop: this.backdropSource
+        ? ctx.view(BACKDROP.temp)
+        : this.placeholderView,
+    });
+    let step = this.beginStep(ctx, true);
+    step.setBindGroup(2, binds);
 
     // opaque: one draw per material, depth decides the order
     for (let id = 0; id < this.opaqueBatches.length; id++) {
@@ -248,29 +386,233 @@ export default class DrawPass extends RenderPass {
       const batch = this.opaqueBatches[id];
       if (!pipeline || !batch || batch.buffer.getCount === 0) continue;
       batch.buffer.upload();
-      encoder.setPipeline(pipeline);
-      encoder.setVertexBuffer(0, batch.buffer.getBuffer);
-      encoder.draw(6, batch.buffer.getCount);
+      step.setPipeline(pipeline);
+      step.setVertexBuffer(0, batch.buffer.getBuffer);
+      step.draw(6, batch.buffer.getCount);
     }
 
+    this.backdropGroupCount = 0;
     const count = this.transparent.getCount;
-    if (count === 0) return;
+    if (count === 0) {
+      step.end();
+      return;
+    }
     const buffer = this.depthSorted ? this.sortTransparent() : this.transparent;
     buffer.upload();
-    encoder.setVertexBuffer(0, buffer.getBuffer);
+    if (this.backdropSource && this.backdrops.length > 0) {
+      this.groupBackdrops(buffer);
+    }
 
-    // transparent: keep the order, one draw per run of the same material
+    // each group ends the step, blurs what is drawn so far and draws on top of it
+    let first = 0;
+    for (let i = 0; i < this.backdropGroupCount; i++) {
+      const group = this.backdropGroups[i];
+      this.drawTransparent(step, buffer, first, group.start);
+      step.end();
+      this.blurBackdrop(ctx, group);
+      step = this.beginStep(ctx, false);
+      step.setBindGroup(2, binds);
+      first = group.start;
+    }
+    this.drawTransparent(step, buffer, first, count);
+    step.end();
+  }
+
+  private beginStep(ctx: MultiPassContext, clear: boolean) {
+    return ctx.beginRender("draw", {
+      colors: [
+        { name: this.target, clear: clear ? this.clearColor : undefined },
+      ],
+      depth: this.depthSorted
+        ? { name: this.depthName, clear: clear ? 1 : undefined }
+        : undefined,
+    });
+  }
+
+  // transparent: keep the order, one draw per run of the same material
+  private drawTransparent(
+    step: GPURenderPassEncoder,
+    buffer: GrowingBuffer,
+    from: number,
+    to: number,
+  ) {
+    if (from >= to) return;
+    step.setVertexBuffer(0, buffer.getBuffer);
     const uints = buffer.getUints;
     const stride = INSTANCE.stride;
     const material = INSTANCE.offsets.material;
-    let first = 0;
-    while (first < count) {
+    let first = from;
+    while (first < to) {
       const id = uints[first * stride + material];
       let end = first + 1;
-      while (end < count && uints[end * stride + material] === id) end++;
-      encoder.setPipeline(this.pipelines[id].transparent);
-      encoder.draw(6, end - first, 0, first);
+      while (end < to && uints[end * stride + material] === id) end++;
+      step.setPipeline(this.pipelines[id].transparent);
+      step.draw(6, end - first, 0, first);
       first = end;
+    }
+  }
+
+  // a backdrop joins the open group when nothing drawn since its snapshot
+  // lies within its reach, otherwise it would miss what is under it
+  private groupBackdrops(buffer: GrowingBuffer) {
+    const floats = buffer.getFloats;
+    const uints = buffer.getUints;
+    const bounds = this.scratchBounds;
+    const drawn = this.drawnBounds;
+    const params = INSTANCE.offsets.params;
+    let group: BackdropGroup | null = null;
+    let cursor = 0;
+
+    for (const index of this.backdrops) {
+      if (group) {
+        for (let i = cursor; i < index; i++) {
+          this.instanceBounds(floats, uints, i, bounds);
+          this.grow(drawn, bounds);
+        }
+      }
+      cursor = index;
+      const sigma = floats[index * INSTANCE.stride + params];
+      const reach = sigma * BACKDROP.reach;
+      this.instanceBounds(floats, uints, index, bounds);
+      const seesDrawn =
+        bounds.minX - reach < drawn.maxX &&
+        bounds.maxX + reach > drawn.minX &&
+        bounds.minY - reach < drawn.maxY &&
+        bounds.maxY + reach > drawn.minY;
+
+      if (group && !seesDrawn) {
+        this.grow(group, bounds);
+        group.top = Math.max(group.top, this.backdropLevel(sigma));
+        continue;
+      }
+      group = this.nextGroup();
+      group.start = index;
+      group.minX = bounds.minX;
+      group.minY = bounds.minY;
+      group.maxX = bounds.maxX;
+      group.maxY = bounds.maxY;
+      group.top = this.backdropLevel(sigma);
+      drawn.minX = Infinity;
+      drawn.minY = Infinity;
+      drawn.maxX = -Infinity;
+      drawn.maxY = -Infinity;
+    }
+  }
+
+  private nextGroup() {
+    const groups = this.backdropGroups;
+    if (this.backdropGroupCount === groups.length) {
+      groups.push({ start: 0, minX: 0, minY: 0, maxX: 0, maxY: 0, top: 0 });
+    }
+    return groups[this.backdropGroupCount++];
+  }
+
+  private grow(target: Bounds, bounds: Bounds) {
+    if (bounds.minX < target.minX) target.minX = bounds.minX;
+    if (bounds.minY < target.minY) target.minY = bounds.minY;
+    if (bounds.maxX > target.maxX) target.maxX = bounds.maxX;
+    if (bounds.maxY > target.maxY) target.maxY = bounds.maxY;
+  }
+
+  // must match the level pick in draw.wgsl
+  private backdropLevel(sigma: number) {
+    const level = Math.log2(sigma / BACKDROP.sigmaPerTexel) - 1;
+    return AxiomMath.clamp(level, 0, BACKDROP.levels - 1);
+  }
+
+  // mirrors the quad the vertex shader builds, in canvas pixels
+  private instanceBounds(
+    floats: Float32Array,
+    uints: Uint32Array,
+    index: number,
+    out: Bounds,
+  ) {
+    const base = index * INSTANCE.stride;
+    const { position, size, radius, rotation, outlineWidth, params, shape } =
+      INSTANCE.offsets;
+    const x = floats[base + position];
+    const y = floats[base + position + 1];
+    const kind = uints[base + shape];
+    if (kind === SHAPE.QUAD) {
+      // quads pack their 4 points into position, size and radius
+      const bx = floats[base + size];
+      const by = floats[base + size + 1];
+      const cx = floats[base + radius];
+      const cy = floats[base + radius + 1];
+      const dx = floats[base + radius + 2];
+      const dy = floats[base + radius + 3];
+      out.minX = Math.min(x, bx, cx, dx) - 1;
+      out.minY = Math.min(y, by, cy, dy) - 1;
+      out.maxX = Math.max(x, bx, cx, dx) + 1;
+      out.maxY = Math.max(y, by, cy, dy) + 1;
+      return;
+    }
+    const halfWidth = floats[base + size] / 2;
+    const halfHeight = floats[base + size + 1] / 2;
+    // antialiasing margin plus the half pixel of anchor snapping
+    let pad = 1.5;
+    if (kind === SHAPE.SHADOW) {
+      pad +=
+        Math.max(
+          Math.abs(floats[base + params]),
+          Math.abs(floats[base + params + 1]),
+        ) +
+        Math.max(floats[base + params + 2], 0) +
+        1.5 * floats[base + outlineWidth];
+    }
+    const angle = floats[base + rotation];
+    const cos = Math.abs(Math.cos(angle));
+    const sin = Math.abs(Math.sin(angle));
+    const extentX = cos * (halfWidth + pad) + sin * (halfHeight + pad);
+    const extentY = sin * (halfWidth + pad) + cos * (halfHeight + pad);
+    const centerX = x + halfWidth;
+    const centerY = y + halfHeight;
+    out.minX = centerX - extentX;
+    out.minY = centerY - extentY;
+    out.maxX = centerX + extentX;
+    out.maxY = centerY + extentY;
+  }
+
+  // snapshot of scene + gui drawn so far into mip 0, then each level blurs the one below,
+  // all scissored to the group so the cost follows the glass area, not the screen
+  private blurBackdrop(ctx: MultiPassContext, group: BackdropGroup) {
+    // one level above the top for the blend, a bit more since the gpu level is f32
+    const levels =
+      Math.min(BACKDROP.levels - 1, Math.floor(group.top + 0.01) + 1) + 1;
+    const margin = BACKDROP.margin * 2 ** levels;
+    const scene = ctx.view(this.backdropSource!);
+    const gui = ctx.output(this.target);
+    for (let level = 0; level < levels; level++) {
+      const texel = 2 ** (level + 1);
+      const size = ctx.size(BACKDROP.temp, level);
+      const { clamp } = AxiomMath;
+      const left = clamp(Math.floor((group.minX - margin) / texel), 0, size.width);
+      const top = clamp(Math.floor((group.minY - margin) / texel), 0, size.height);
+      const right = clamp(Math.ceil((group.maxX + margin) / texel), 0, size.width);
+      const bottom = clamp(Math.ceil((group.maxY + margin) / texel), 0, size.height);
+      // off screen: nothing of the group gets drawn either
+      if (right <= left || bottom <= top) return;
+
+      const step = ctx.beginRender(this.backdropLabels[level], {
+        colors: [{ name: BACKDROP.temp, mip: level }],
+      });
+      step.setPipeline(
+        level === 0
+          ? this.backdropPipelines.compose
+          : this.backdropPipelines.downsample,
+      );
+      step.setBindGroup(
+        2,
+        this.backdropBinds.get({
+          scene,
+          gui,
+          // compose reads no source, any view other than the written mip fits the layout
+          source: level === 0 ? gui : ctx.output(BACKDROP.temp, level - 1),
+        }),
+      );
+      step.setScissorRect(left, top, right - left, bottom - top);
+      step.draw(3);
+      step.end();
     }
   }
 
@@ -280,10 +622,11 @@ export default class DrawPass extends RenderPass {
     this.transparent.destroy();
     this.sorted.destroy();
     this.sortBuffer.destroy();
+    this.placeholder?.destroy();
   }
 
   private async createPipelines(
-    targets: PassTargets,
+    targets: PipelineTargets,
     material: Material,
   ): Promise<MaterialPipelines> {
     const sorted = this.depthSorted;
@@ -414,6 +757,9 @@ export default class DrawPass extends RenderPass {
       opaque,
       transparent: this.transparent.getCount,
     };
+    if (this.backdropSource) {
+      counters["backdrop groups"] = this.backdropGroupCount;
+    }
     if (this.depthSorted) {
       // depth32float keeps whole numbers exact up to 2^24, above 100 neighbours can share depth
       const used = (this.sortParams.total / 2 ** 24) * 100;
