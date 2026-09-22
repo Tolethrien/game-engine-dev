@@ -1,4 +1,4 @@
-﻿import { Draw } from "@/core/aurora/urp/draw";
+﻿import { Draw } from "@/core/aurora/urp/draw/draw";
 import { COLOR } from "@/core/axiom/color";
 import TextBox from "@/core/aurora/text/textBox";
 import TextLayout from "@/core/aurora/text/textLayout";
@@ -42,7 +42,7 @@ function quote(t: number) {
   // QUOTE_BOX.set({ width: Math.floor(t / 2) % 2 === 0 ? 700 : 900 });
   Draw.textBox(QUOTE_BOX, {
     position: { x: CENTER_X - 450, y: 300, z: 0 },
-    color: [220, 224, 235, 255],
+    color: COLOR.WHITE,
   });
 }
 

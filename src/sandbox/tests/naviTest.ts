@@ -1,10 +1,10 @@
 import Navi from "@/core/navi/navi";
 import UINode, { NodeProps, NodeStates } from "@/core/navi/node";
-import { DrawGui as Draw } from "@aurora/urp/draw";
+import { DrawGui as Draw } from "@/core/aurora/urp/draw/draw";
 import Material from "@aurora/material";
-import rainbowShader from "@aurora/urp/shaders/materials/rainbow.wgsl?raw";
-import textGlow from "@aurora/urp/shaders/materials/textGlow.wgsl?raw";
-import fogShader from "@aurora/urp/shaders/materials/fog.wgsl?raw";
+import rainbowShader from "@aurora/urpOld/shaders/materials/rainbow.wgsl?raw";
+import textGlow from "@aurora/urpOld/shaders/materials/textGlow.wgsl?raw";
+import fogShader from "@aurora/urpOld/shaders/materials/fog.wgsl?raw";
 import UIText from "@/core/navi/elements/text";
 import UITextBox from "@/core/navi/elements/textbox";
 import UIScrollBar from "@/core/navi/elements/scrollbar";
@@ -205,7 +205,7 @@ class SpinningSprite extends UINode {
   }
   public draw(box: Box) {
     Draw.sprite({
-      position: { x: box.x, y: box.y, z: 0 },
+      position: { x: box.x, y: box.y },
       size: { width: box.w, height: box.h },
       texture: this.texture,
       atlas: "world",
@@ -218,7 +218,7 @@ class SpinningSprite extends UINode {
 class SpinningRect extends UINode {
   public draw(box: Box) {
     Draw.rect({
-      position: { x: box.x, y: box.y, z: 0 },
+      position: { x: box.x, y: box.y },
       size: { width: box.w, height: box.h },
       color: this.style.backgroundColor,
       rounded: this.style.rounded,
@@ -1315,11 +1315,10 @@ function buildShadowTest(x: number, y: number) {
         textColor: [255, 0, 0, 255],
         textFont: "latoBold",
         textSize: 90,
-        // textOutline: { width: 3 },
         textMaterial: GLOW_MATERIAL.with({
           haloStrength: 1.5,
           reach: 10,
-          whiten: 0.6,
+          whiten: 1,
         }),
       },
     }),

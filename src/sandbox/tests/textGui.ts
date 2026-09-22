@@ -1,5 +1,5 @@
 import Aurora from "@/core/aurora/core";
-import { DrawGui } from "@/core/aurora/urp/draw";
+import { DrawGui } from "@/core/aurora/urp/draw/draw";
 import { COLOR } from "@/core/axiom/color";
 import TextBox from "@/core/aurora/text/textBox";
 import TextLayout from "@/core/aurora/text/textLayout";
@@ -20,7 +20,7 @@ const PANEL_HEIGHT = 230;
 
 function panelFrame(x: number, y: number, width: number, height: number) {
   DrawGui.rect({
-    position: { x, y, z: 0 },
+    position: { x, y },
     size: { width, height },
     color: PANEL_BACKGROUND,
     outline: { width: 2, color: PANEL_BORDER },
@@ -34,7 +34,7 @@ function topBar() {
   const width = Aurora.canvas.width;
   panelFrame(0, 0, width, TOP_BAR_HEIGHT);
   DrawGui.text({
-    position: { x: MARGIN, y: 14, z: 0 },
+    position: { x: MARGIN, y: 14 },
     font: "blackOps",
     text: "GAME HUD",
     size: 26,
@@ -42,7 +42,7 @@ function topBar() {
     outline: { width: 2, color: COLOR.BLACK },
   });
   DrawGui.text({
-    position: { x: 220, y: 20, z: 0 },
+    position: { x: 220, y: 20 },
     font: "lato",
     text: "top bar, dynamic ttf",
     size: 15,
@@ -50,7 +50,7 @@ function topBar() {
   });
   // bitmap font: no rasterization, exact 1:1 pixels; omitted font uses the default
   DrawGui.text({
-    position: { x: width - 220, y: 16, z: 0 },
+    position: { x: width - 220, y: 16 },
     text: "PIXEL",
     size: 22,
     color: COLOR.HOT_PINK,
@@ -92,7 +92,7 @@ function bottomBar(t: number) {
     width: width - MARGIN * 2,
     height: BOTTOM_BAR_HEIGHT - MARGIN * 2,
   });
-  DrawGui.textBox(LOG_BOX, { position: { x: MARGIN, y: y + MARGIN, z: 0 } });
+  DrawGui.textBox(LOG_BOX, { position: { x: MARGIN, y: y + MARGIN } });
 }
 
 //=============================== top-left panel: justify + wrap
@@ -112,13 +112,13 @@ const JUSTIFY_BOX = new TextBox({
 function topLeftPanel(x: number, y: number) {
   panelFrame(x, y, PANEL_WIDTH, PANEL_HEIGHT);
   DrawGui.text({
-    position: { x: x + 20, y: y + 16, z: 0 },
+    position: { x: x + 20, y: y + 16 },
     font: "latoBold",
     text: "QUEST LOG",
     size: 20,
   });
   DrawGui.textBox(JUSTIFY_BOX, {
-    position: { x: x + 20, y: y + 54, z: 0 },
+    position: { x: x + 20, y: y + 54 },
     color: [210, 214, 228, 255],
   });
 }
@@ -139,17 +139,17 @@ const ALIGN_BOXES = (["start", "center", "end"] as const).map(
 function topRightPanel(x: number, y: number, t: number) {
   panelFrame(x, y, PANEL_WIDTH, PANEL_HEIGHT);
   DrawGui.text({
-    position: { x: x + 20, y: y + 16, z: 0 },
+    position: { x: x + 20, y: y + 16 },
     font: "latoBold",
     text: "ALIGNMENT",
     size: 20,
   });
   ALIGN_BOXES.forEach((box, i) => {
-    DrawGui.textBox(box, { position: { x: x + 20, y: y + 56 + i * 28, z: 0 } });
+    DrawGui.textBox(box, { position: { x: x + 20, y: y + 56 + i * 28 } });
   });
 
   DrawGui.text({
-    position: { x: x + 20, y: y + 160, z: 0 },
+    position: { x: x + 20, y: y + 160 },
     font: "latoBold",
     text: "CHAPTER ONE",
     size: 16,
@@ -186,33 +186,33 @@ const SIGN_BOX = new TextBox({
 function bottomLeftPanel(x: number, y: number, t: number) {
   panelFrame(x, y, PANEL_WIDTH, PANEL_HEIGHT);
   DrawGui.text({
-    position: { x: x + 20, y: y + 16, z: 0 },
+    position: { x: x + 20, y: y + 16 },
     font: "latoBold",
     text: "OVERFLOW",
     size: 20,
   });
   DrawGui.text({
-    position: { x: x + 20, y: y + 54, z: 0 },
+    position: { x: x + 20, y: y + 54 },
     font: "lato",
     text: "ellipsis, one line",
     size: 13,
     color: MUTED,
   });
   DrawGui.textBox(ITEM_BOX, {
-    position: { x: x + 20, y: y + 74, z: 0 },
+    position: { x: x + 20, y: y + 74 },
     color: COLOR.GOLD,
   });
 
   const name = TAVERN_NAMES[Math.floor(t / 2) % TAVERN_NAMES.length];
   SIGN_BOX.set({ text: name });
   DrawGui.rect({
-    position: { x: x + 20, y: y + 120, z: 0 },
+    position: { x: x + 20, y: y + 120 },
     size: { width: PANEL_WIDTH - 40, height: 50 },
     color: COLOR.TRANSPARENT,
     outline: { width: 1, color: GUIDE },
   });
   DrawGui.textBox(SIGN_BOX, {
-    position: { x: x + 20, y: y + 120, z: 0 },
+    position: { x: x + 20, y: y + 120 },
     color: COLOR.PEACH,
   });
 }
@@ -240,13 +240,13 @@ const BUTTON_BOX = new TextBox({
 function bottomRightPanel(x: number, y: number, t: number) {
   panelFrame(x, y, PANEL_WIDTH, PANEL_HEIGHT);
   DrawGui.text({
-    position: { x: x + 20, y: y + 16, z: 0 },
+    position: { x: x + 20, y: y + 16 },
     font: "latoBold",
     text: "COLUMN + BUTTON",
     size: 18,
   });
   DrawGui.textBox(COLUMN_BOX, {
-    position: { x: x + 20, y: y + 54, z: 0 },
+    position: { x: x + 20, y: y + 54 },
     color: COLOR.SKY_BLUE,
   });
 
@@ -259,7 +259,6 @@ function bottomRightPanel(x: number, y: number, t: number) {
   const buttonPosition = {
     x: centerX - scaled.width / 2,
     y: centerY - scaled.height / 2,
-    z: 0,
   };
   DrawGui.rect({
     position: buttonPosition,

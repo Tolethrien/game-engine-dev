@@ -4,7 +4,12 @@ import AssetManager, { AssetName } from "./assetManager";
 import ResourcePool, { DEPTH_FORMATS, TextureDescriptor } from "./resourcePool";
 import SharedBinds, { SamplerName } from "./sharedBinds";
 import GpuTimer from "./timer";
+import Aurora from "./core";
 
+interface CanvasWriteOptions {
+  loadOp: GPULoadOp;
+  clearValue?: Readonly<RGBA>;
+}
 interface CanvasWrite {
   loadOp: GPULoadOp;
   clearValue?: GPUColor;
@@ -34,7 +39,7 @@ export interface PassTargets extends PipelineTargets, PassFormats {}
 export interface StepColorTarget {
   name: string;
   mip?: number;
-  clear?: GPUColor;
+  clear?: Readonly<RGBA>;
 }
 export interface StepDepthTarget {
   name: string;
@@ -70,6 +75,8 @@ export abstract class Pass<T extends keyof PassEncoders = keyof PassEncoders> {
     return true;
   }
   destroy(): void {}
+  /** clears vuffers and stuff here - beginning of a frame */
+  clearFrame?(): void {}
   counters?(): Record<string, number>;
   abstract execute(encoder: PassEncoders[T], ctx: PassContexts[T]): void;
 }
@@ -109,8 +116,11 @@ export class PassResources {
   public readAsset(name: AssetName) {
     this.assets.push(name);
   }
-  public writeCanvas(options: CanvasWrite) {
-    this.canvas = options;
+  public writeCanvas({ loadOp, clearValue }: CanvasWriteOptions) {
+    this.canvas = {
+      loadOp,
+      clearValue: clearValue && Aurora.toCanvasColor(clearValue),
+    };
   }
   public sampler(name: SamplerName) {
     this.samplerName = name;
@@ -122,13 +132,17 @@ export class PassResources {
       clearValue,
       depthClearValue,
       clear = true,
-    }: { clearValue?: GPUColor; depthClearValue?: number; clear?: boolean } = {},
+    }: {
+      clearValue?: Readonly<RGBA>;
+      depthClearValue?: number;
+      clear?: boolean;
+    } = {},
   ) {
     this.writes.push({
       name,
       desc: { ...desc, label: name },
       loadOp: "clear",
-      clearValue,
+      clearValue: clearValue && Aurora.toTargetColor(clearValue),
       depthClearValue,
       clear,
     });
@@ -312,8 +326,14 @@ export class MultiPassContext extends PassContext {
         colorAttachments.push({
           view: this.canvasView,
           loadOp:
-            target.clear !== undefined ? "clear" : first ? canvas.loadOp : "load",
-          clearValue: target.clear ?? canvas.clearValue,
+            target.clear !== undefined
+              ? "clear"
+              : first
+                ? canvas.loadOp
+                : "load",
+          clearValue: target.clear
+            ? Aurora.toCanvasColor(target.clear)
+            : canvas.clearValue,
           storeOp: "store",
         });
         continue;
@@ -321,7 +341,7 @@ export class MultiPassContext extends PassContext {
       colorAttachments.push({
         view: ResourcePool.view(this.target(target.name), target.mip ?? 0),
         loadOp: target.clear !== undefined ? "clear" : "load",
-        clearValue: target.clear,
+        clearValue: target.clear && Aurora.toTargetColor(target.clear),
         storeOp: "store",
       });
     }
@@ -356,7 +376,10 @@ export class MultiPassContext extends PassContext {
       }),
     );
     renderPass.setBindGroup(0, SharedBinds.getFrame);
-    renderPass.setBindGroup(1, SharedBinds.getAssets(this.declared.samplerName));
+    renderPass.setBindGroup(
+      1,
+      SharedBinds.getAssets(this.declared.samplerName),
+    );
     return renderPass;
   }
 

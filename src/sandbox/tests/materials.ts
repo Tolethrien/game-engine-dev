@@ -1,11 +1,11 @@
 import Material from "@aurora/material";
-import laserElectric from "@aurora/urp/shaders/materials/laserElectric.wgsl?raw";
-import laserPulse from "@aurora/urp/shaders/materials/laserPulse.wgsl?raw";
-import laserPlasma from "@aurora/urp/shaders/materials/laserPlasma.wgsl?raw";
-import laserTracer from "@aurora/urp/shaders/materials/laserTracer.wgsl?raw";
-import glowOrb from "@aurora/urp/shaders/materials/glowOrb.wgsl?raw";
-import textRainbow from "@aurora/urp/shaders/materials/textRainbow.wgsl?raw";
-import textGlow from "@aurora/urp/shaders/materials/textGlow.wgsl?raw";
+import laserElectric from "@aurora/urpOld/shaders/materials/laserElectric.wgsl?raw";
+import laserPulse from "@aurora/urpOld/shaders/materials/laserPulse.wgsl?raw";
+import laserPlasma from "@aurora/urpOld/shaders/materials/laserPlasma.wgsl?raw";
+import laserTracer from "@aurora/urpOld/shaders/materials/laserTracer.wgsl?raw";
+import glowOrb from "@aurora/urpOld/shaders/materials/glowOrb.wgsl?raw";
+import textRainbow from "@aurora/urpOld/shaders/materials/textRainbow.wgsl?raw";
+import textGlow from "@aurora/urpOld/shaders/materials/textGlow.wgsl?raw";
 
 export const LASER_ELECTRIC = Material.create({
   name: "laserElectric",

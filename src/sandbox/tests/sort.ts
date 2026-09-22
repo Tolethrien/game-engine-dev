@@ -1,4 +1,4 @@
-import { Draw } from "@/core/aurora/urp/draw";
+import { Draw } from "@/core/aurora/urp/draw/draw";
 import { COLOR } from "@/core/axiom/color";
 
 // soft copies for the transparent row of the sort test

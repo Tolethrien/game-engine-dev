@@ -1,10 +1,8 @@
-import { Draw } from "@/core/aurora/urp/draw";
-import URP from "@/core/aurora/urp/urp";
+import { Draw } from "@/core/aurora/urp/draw/draw";
 import { COLOR } from "@/core/axiom/color";
 import Time from "@/core/engine/time";
 
-export function staticObjects() {
-  const t = Time.getTimeInSeconds();
+export function staticObjects(t: number) {
   Draw.rect({
     position: { x: 500, y: 300, z: 0 },
     size: { width: 180, height: 180 },

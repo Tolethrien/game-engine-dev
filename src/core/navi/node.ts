@@ -1,4 +1,4 @@
-import { DrawGui as Draw } from "@aurora/urp/draw";
+import { DrawGui as Draw } from "@aurora/urp/draw/draw";
 import { COLOR } from "@axiom/color";
 import {
   Anchor,
@@ -171,7 +171,7 @@ export default class UINode {
       Draw.sprite({
         position,
         size,
-        color,
+        tint: color,
         rounded,
         outline,
         shadow,

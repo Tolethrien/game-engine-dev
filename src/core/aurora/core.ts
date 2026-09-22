@@ -7,7 +7,7 @@ import {
   ChangeableRenderConfig,
   RenderRes,
 } from "./config";
-import { PipelineTargets } from "./pass";
+import type { PipelineTargets } from "./pass";
 import RenderGraph from "./renderGraph";
 import ResourcePool from "./resourcePool";
 import SharedBinds, { CameraData, GlobalBinding } from "./sharedBinds";
@@ -47,6 +47,7 @@ export default class Aurora {
   );
   private static pendingParameters: DeepPartial<ChangeableRenderConfig> | null =
     null;
+
   public static async init(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const ctx = canvas.getContext("webgpu");
@@ -109,6 +110,35 @@ export default class Aurora {
     if (channel <= 0.04045) return channel / 12.92;
     return ((channel + 0.055) / 1.055) ** 2.4;
   }
+  public static toTargetColor([
+    red,
+    green,
+    blue,
+    alpha,
+  ]: Readonly<RGBA>): GPUColor {
+    const unit = alpha / 255;
+    return [
+      this.colorChannel(red) * unit,
+      this.colorChannel(green) * unit,
+      this.colorChannel(blue) * unit,
+      unit,
+    ];
+  }
+  // canvas holds already encoded srgb, so it is not linearized
+  public static toCanvasColor([
+    red,
+    green,
+    blue,
+    alpha,
+  ]: Readonly<RGBA>): GPUColor {
+    const unit = alpha / 255;
+    return [
+      (red / 255) * unit,
+      (green / 255) * unit,
+      (blue / 255) * unit,
+      unit,
+    ];
+  }
   public static get getCanvasFormat() {
     return this.canvasFormat;
   }
@@ -144,6 +174,7 @@ export default class Aurora {
         void RenderGraph.rebuild();
       }
     }
+    RenderGraph.beginFrame();
   }
   public static endFrame() {
     if (this.lost) return;

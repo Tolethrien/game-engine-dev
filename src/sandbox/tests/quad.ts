@@ -1,4 +1,4 @@
-import { Draw } from "@/core/aurora/urp/draw";
+import { Draw } from "@/core/aurora/urp/draw/draw";
 import { COLOR } from "@/core/axiom/color";
 import { LASER_PULSE, PULSE_PARAMS } from "./materials";
 
@@ -19,16 +19,16 @@ export function quadTest(t: number) {
 
   // trapezoid with a material, uv follows the deformed shape
   const lean = Math.cos(t * 1.5) * 60;
-  Draw.quad({
-    points: [
-      { x: 1500 + lean, y: 480 },
-      { x: 1700 + lean, y: 480 },
-      { x: 1820, y: 640 },
-      { x: 1400, y: 640 },
-    ],
-    z: 0,
-    color: COLOR.HOT_PINK,
-    material: LASER_PULSE,
-    params: PULSE_PARAMS,
-  });
+  // Draw.quad({
+  //   points: [
+  //     { x: 1500 + lean, y: 480 },
+  //     { x: 1700 + lean, y: 480 },
+  //     { x: 1820, y: 640 },
+  //     { x: 1400, y: 640 },
+  //   ],
+  //   z: 0,
+  //   color: COLOR.HOT_PINK,
+  //   material: LASER_PULSE,
+  //   params: PULSE_PARAMS,
+  // });
 }

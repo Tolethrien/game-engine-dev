@@ -1,5 +1,5 @@
 import Aurora from "@/core/aurora/core";
-import { DrawGui } from "@/core/aurora/urp/draw";
+import { DrawGui } from "@/core/aurora/urp/draw/draw";
 import { COLOR } from "@/core/axiom/color";
 
 const LAYOUT = {
@@ -30,7 +30,7 @@ export function guiBackdropTest(t: number) {
   // moving panel over the stripes and past their right edge into the world
   const slide = (Math.sin(t * 0.6) * 0.5 + 0.5) * (LAYOUT.width - 120);
   DrawGui.rect({
-    position: { x: left + slide - 60, y: top + 20, z: 0 },
+    position: { x: left + slide - 60, y: top + 20 },
     size: { width: 240, height: 120 },
     rounded: 18,
     color: GLASS_TINT,
@@ -40,7 +40,7 @@ export function guiBackdropTest(t: number) {
   });
   // nested: blurs the panel above together with the stripes
   DrawGui.rect({
-    position: { x: left + slide + 20, y: top + 60, z: 0 },
+    position: { x: left + slide + 20, y: top + 60 },
     size: { width: 110, height: 60 },
     rounded: 12,
     color: [120, 180, 255, 50],
@@ -53,14 +53,14 @@ export function guiBackdropTest(t: number) {
   for (let i = 0; i < 4; i++) {
     const y = top + 160 + i * (LAYOUT.buttonHeight + LAYOUT.buttonGap) * 0.8;
     DrawGui.rect({
-      position: { x: listLeft + i * 60, y, z: 0 },
+      position: { x: listLeft + i * 60, y },
       size: { width: LAYOUT.buttonWidth, height: LAYOUT.buttonHeight * 0.7 },
       rounded: 8,
       color: GLASS_TINT,
       backdrop: { blur: 3 },
     });
     DrawGui.text({
-      position: { x: listLeft + i * 60 + 12, y: y + 3, z: 0 },
+      position: { x: listLeft + i * 60 + 12, y: y + 3 },
       font: "lato",
       text: `Button ${i + 1}`,
       size: 16,
@@ -70,7 +70,7 @@ export function guiBackdropTest(t: number) {
 
   // rotated glass on the world, right of the stripes
   DrawGui.rect({
-    position: { x: left + LAYOUT.width + 40, y: top + 60, z: 0 },
+    position: { x: left + LAYOUT.width + 40, y: top + 60 },
     size: { width: 160, height: 160 },
     rotation: t * 0.4,
     rounded: 24,
@@ -83,13 +83,13 @@ function stripes(left: number, top: number) {
   const count = Math.ceil(LAYOUT.width / LAYOUT.stripe);
   for (let i = 0; i < count; i++) {
     DrawGui.rect({
-      position: { x: left + i * LAYOUT.stripe, y: top, z: 0 },
+      position: { x: left + i * LAYOUT.stripe, y: top },
       size: { width: LAYOUT.stripe / 2, height: LAYOUT.height },
       color: STRIPES[i % STRIPES.length],
     });
   }
   DrawGui.text({
-    position: { x: left + 20, y: top + LAYOUT.height - 40, z: 0 },
+    position: { x: left + 20, y: top + LAYOUT.height - 40 },
     font: "latoBold",
     text: "Backdrop blur",
     size: 28,

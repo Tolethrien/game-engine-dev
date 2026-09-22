@@ -1,60 +1,32 @@
-import { deepMerge } from "@axiom/utils";
+import { deepMerge } from "@/core/axiom/utils";
 import RenderGraph from "../renderGraph";
-import DrawPass from "./passes/draw";
-import PresentPass from "./passes/present";
-import PreviewPass from "./passes/preview";
-import { guiDraw, worldDraw } from "./drawApi";
-import type { URPConfig, URPSortConfig } from "./urpTypes";
+import ScreenPas from "./passes/screenPass";
+import WorldPass from "./passes/worldPass";
+import GuiPass from "./passes/guiPass";
+export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z";
+export type SortAnchor = "top" | "center" | "bottom";
 
-const BASE_CONFIG: URPConfig = {
-  sort: {
-    mode: "none",
-    anchor: "bottom",
-    step: { x: 1, y: 1, z: 1 },
-    zRange: [0, 255],
-  },
-};
-// gui is layered in call order, like an element tree
-const GUI_SORT: URPSortConfig = {
-  mode: "none",
-  anchor: "top",
+export interface SortProps {
+  sortMode: SortMode;
+  sortAnchor: SortAnchor;
+  zRange: [number, number];
+  step: { x: number; y: number; z: number };
+}
+export interface URPProps extends SortProps {}
+const BASE_CONFIG: URPProps = {
+  sortMode: "none",
+  sortAnchor: "center",
   step: { x: 1, y: 1, z: 1 },
-  zRange: [0, 0],
+  zRange: [0, 255],
 };
-
-export default class URP {
-  private static config: URPConfig = structuredClone(BASE_CONFIG);
-
-  public static get getConfig(): DeepReadonly<URPConfig> {
-    return this.config;
-  }
-
-  public static async init(config: DeepPartial<URPConfig> = {}) {
-    this.config = deepMerge(structuredClone(BASE_CONFIG), config);
-    const { sort } = this.config;
+export default class URP2 {
+  public static async init(props: DeepPartial<URPProps> = {}) {
+    const base = structuredClone(BASE_CONFIG);
+    const config = deepMerge(base, props);
     await RenderGraph.setPreset(() => [
-      new DrawPass({
-        name: "draw",
-        space: "world",
-        target: "offscreenCanvas",
-        sort,
-        api: worldDraw,
-      }),
-      new DrawPass({
-        name: "gui",
-        space: "screen",
-        target: "gui",
-        sort: GUI_SORT,
-        api: guiDraw,
-        backdrop: "offscreenCanvas",
-      }),
-      new PresentPass(),
-      new PreviewPass({ texture: "canvas" }),
+      new WorldPass(config),
+      new GuiPass(),
+      new ScreenPas(),
     ]);
-  }
-
-  public static beginFrame() {
-    worldDraw.beginFrame();
-    guiDraw.beginFrame();
   }
 }

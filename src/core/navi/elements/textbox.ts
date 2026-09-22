@@ -1,4 +1,4 @@
-import { DrawGui as Draw } from "@aurora/urp/draw";
+import { DrawGui as Draw } from "@aurora/urp/draw/draw";
 import TextBox, { TextAlign, TextDirection } from "@aurora/text/textBox";
 import Navi from "../navi";
 import UINode, { NodeProps } from "../node";
@@ -102,7 +102,7 @@ export default class UITextBox extends UINode {
 
     Draw.textBox(this.box, {
       ...this.paintTextStyle,
-      position: { x: box.x, y: box.y, z: 0 },
+      position: { x: box.x, y: box.y },
     });
   }
 }

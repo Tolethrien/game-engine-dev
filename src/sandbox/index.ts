@@ -8,12 +8,26 @@ import latoBold from "@sandbox/assets/fonts/lato/Lato-Bold.ttf";
 import latoItalic from "@sandbox/assets/fonts/lato/Lato-Italic.ttf";
 import medievalSharp from "@sandbox/assets/fonts/medievalSharp/MedievalSharp-Regular.ttf";
 import blackOps from "@sandbox/assets/fonts/blackOpsOne/BlackOpsOne-Regular.ttf";
-import URP from "@/core/aurora/urp/urp";
-import type { SortMode, URPSortConfig } from "@/core/aurora/urp/urpTypes";
 import { COLOR } from "@/core/axiom/color";
 import { setupNaviTest, updateNaviTest } from "@sandbox/tests/naviTest";
-import { Draw } from "@/core/aurora/urp/draw";
-
+import { Draw, DrawGui } from "@/core/aurora/urp/draw/draw";
+import URP2 from "@/core/aurora/urp/urp";
+import Time from "@/core/engine/time";
+import latoSdfPng from "@sandbox/assets/fonts/lato/Lato-Regular.mtsdf.png";
+import latoSdfJson from "@sandbox/assets/fonts/lato/Lato-Regular.mtsdf.json";
+import blackOpsSdfPng from "@sandbox/assets/fonts/blackOpsOne/BlackOpsOne-Regular.mtsdf.png";
+import blackOpsSdfJson from "@sandbox/assets/fonts/blackOpsOne/BlackOpsOne-Regular.mtsdf.json";
+import { textWorldTest } from "./tests/textWorld";
+import { clipTest } from "./tests/clip";
+import { guiTest } from "./tests/gui";
+import { guiBackdropTest } from "./tests/guiBackdrop";
+import { guiShadowTest } from "./tests/guiShadow";
+import { lasersTest } from "./tests/lasers";
+import { pilarsTest } from "./tests/pillars";
+import { quadTest } from "./tests/quad";
+import { sortTest } from "./tests/sort";
+import { staticObjects } from "./tests/staticShapes";
+import { textGuiTest } from "./tests/textGui";
 async function preload() {
   await Aurora.config({
     rendering: {
@@ -37,17 +51,25 @@ async function preload() {
       { name: "latoItalic", type: "dynamic", url: latoItalic },
       { name: "medieval", type: "dynamic", url: medievalSharp },
       { name: "blackOps", type: "dynamic", url: blackOps },
+      { name: "latoSdf", type: "mtsdf", url: latoSdfPng, json: latoSdfJson },
+      {
+        name: "blackOpsSdf",
+        type: "mtsdf",
+        url: blackOpsSdfPng,
+        json: blackOpsSdfJson,
+      },
     ],
   });
 
-  await URP.init({
-    sort: {
-      mode: "y+x+z",
-      anchor: "bottom",
-      step: { y: 2, x: 32, z: 1 },
-      zRange: [0, 255],
-    },
-  });
+  // await URP.init({
+  //   sort: {
+  //     mode: "y+x+z",
+  //     anchor: "bottom",
+  //     step: { y: 2, x: 32, z: 1 },
+  //     zRange: [0, 255],
+  //   },
+  // });
+  await URP2.init({ sortMode: "none", sortAnchor: "center" });
   FPSOverlay.setVisible(true);
 }
 
@@ -55,14 +77,25 @@ function setup() {
   setupNaviTest();
 }
 function update() {
-  URP.beginFrame();
+  const t = Time.getTimeInSeconds();
   Draw.sprite({
     position: { x: 0, y: 0, z: 0 },
-    size: { width: 2000, height: 1100 },
     texture: "temp",
-    atlas: "world",
   });
+  // clipTest(t);
+  // guiTest(t);
   updateNaviTest();
+  // guiBackdropTest(t);
+  // guiShadowTest(t);
+  // lasersTest(t);
+  // pilarsTest(t);
+  // quadTest(t);
+  // sortTest(t);
+  // staticObjects(t);
+  // textWorldTest(t);
+  // textGuiTest(t);/
+
+  // updateNaviTest();
 }
 
 Engine.initialize({ setup, preload, update });

@@ -1,5 +1,5 @@
 import Aurora from "@aurora/core";
-import { DrawGui as Draw } from "@aurora/urp/draw";
+import { DrawGui as Draw } from "@aurora/urp/draw/draw";
 import AABB from "@axiom/AABB";
 import AxiomMath from "@axiom/math";
 import InputManager from "@engine/inputManager";

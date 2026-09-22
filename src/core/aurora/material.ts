@@ -1,7 +1,7 @@
 import { assert } from "@axiom/utils";
 import RenderGraph from "./renderGraph";
 import Blend from "./utils/blend";
-import type { MaterialParams } from "./urp/urpTypes";
+import type { MaterialParams } from "./urp/draw/drawTypes";
 
 export type MaterialBlend = "normal" | "additive";
 export type MaterialValues<Name extends string> = Partial<Record<Name, number>>;

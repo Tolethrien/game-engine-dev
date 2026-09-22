@@ -1,6 +1,6 @@
 import AxiomMath from "./math";
 
-type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
+export type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
 
 export default class AABB {
   private constructor() {}
@@ -100,5 +100,24 @@ export default class AABB {
       maxX: shape.x + shape.w,
       maxY: shape.y + shape.h,
     };
+  }
+  // writes into out so hot paths can reuse one object
+  static rotatedBounds(
+    out: Bounds,
+    centerX: number,
+    centerY: number,
+    width: number,
+    height: number,
+    rotation: number,
+  ) {
+    const cos = Math.abs(Math.cos(rotation));
+    const sin = Math.abs(Math.sin(rotation));
+    const extentX = (cos * width + sin * height) / 2;
+    const extentY = (sin * width + cos * height) / 2;
+    out.minX = centerX - extentX;
+    out.maxX = centerX + extentX;
+    out.minY = centerY - extentY;
+    out.maxY = centerY + extentY;
+    return out;
   }
 }

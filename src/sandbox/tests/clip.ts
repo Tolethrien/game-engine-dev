@@ -1,5 +1,5 @@
-import { Draw, DrawGui } from "@/core/aurora/urp/draw";
-import type { DrawRect } from "@/core/aurora/urp/urpTypes";
+import { Draw } from "@/core/aurora/urp/draw/draw";
+import type { GuiRect } from "@/core/aurora/urp/draw/drawTypes";
 import TextBox from "@/core/aurora/text/textBox";
 import { COLOR } from "@/core/axiom/color";
 
@@ -35,104 +35,104 @@ const NOTE_BOX = new TextBox({
 // left: rounded scroll panel clipped to its padding box, nested clip inside
 // right: rotated panel with rotating content; world: rotated rounded window with rotating bars
 export function clipTest(t: number) {
-  scrollPanel(t);
-  rotatedPanel(t);
+  // scrollPanel(t);
+  // rotatedPanel(t);
   worldWindow(t);
 }
 
-function scrollPanel(t: number) {
-  const panel: DrawRect = {
-    position: { x: PANEL.x, y: PANEL.y, z: 0 },
-    size: { width: PANEL.width, height: PANEL.height },
-    color: COLORS.panel,
-    outline: { width: PANEL.border, color: COLORS.border },
-    rounded: PANEL.radius,
-  };
-  DrawGui.rect({
-    ...panel,
-    shadow: { color: COLORS.shadow, offset: { x: 0, y: 8 }, blur: 24 },
-  });
-  DrawGui.pushClip({ ...panel, inset: PANEL.border });
+// function scrollPanel(t: number) {
+//   const panel: GuiRect = {
+//     position: { x: PANEL.x, y: PANEL.y, z: 0 },
+//     size: { width: PANEL.width, height: PANEL.height },
+//     color: COLORS.panel,
+//     outline: { width: PANEL.border, color: COLORS.border },
+//     rounded: PANEL.radius,
+//   };
+//   DrawGui.rect({
+//     ...panel,
+//     shadow: { color: COLORS.shadow, offset: { x: 0, y: 8 }, blur: 24 },
+//   });
+//   DrawGui.pushClip({ ...panel, inset: PANEL.border });
 
-  const scroll =
-    ((Math.sin(t * 0.4) + 1) / 2) *
-    (PANEL.rows * PANEL.rowHeight - PANEL.height);
-  for (let i = 0; i < PANEL.rows; i++) {
-    const y = PANEL.y + i * PANEL.rowHeight - scroll;
-    DrawGui.rect({
-      position: { x: PANEL.x + 12, y: y + 6, z: 0 },
-      size: { width: PANEL.width - 24, height: PANEL.rowHeight - 12 },
-      color: i % 2 ? COLORS.row : COLORS.rowAlt,
-      rounded: 10,
-      shadow: { color: COLORS.shadow, offset: { x: 0, y: 3 }, blur: 6 },
-    });
-    DrawGui.text({
-      position: { x: PANEL.x + 32, y: y + 20, z: 0 },
-      font: "lato",
-      text: `Item ${i + 1}`,
-      size: 20,
-      color: COLORS.text,
-    });
+//   const scroll =
+//     ((Math.sin(t * 0.4) + 1) / 2) *
+//     (PANEL.rows * PANEL.rowHeight - PANEL.height);
+//   for (let i = 0; i < PANEL.rows; i++) {
+//     const y = PANEL.y + i * PANEL.rowHeight - scroll;
+//     DrawGui.rect({
+//       position: { x: PANEL.x + 12, y: y + 6, z: 0 },
+//       size: { width: PANEL.width - 24, height: PANEL.rowHeight - 12 },
+//       color: i % 2 ? COLORS.row : COLORS.rowAlt,
+//       rounded: 10,
+//       shadow: { color: COLORS.shadow, offset: { x: 0, y: 3 }, blur: 6 },
+//     });
+//     DrawGui.text({
+//       position: { x: PANEL.x + 32, y: y + 20, z: 0 },
+//       font: "lato",
+//       text: `Item ${i + 1}`,
+//       size: 20,
+//       color: COLORS.text,
+//     });
 
-    // every fifth row clips a spinning card to its own rounded box
-    if (i % 5 !== 2) continue;
-    const box = {
-      position: { x: PANEL.x + 200, y: y + 10 },
-      size: { width: 180, height: PANEL.rowHeight - 20 },
-      rounded: 8,
-    };
-    DrawGui.pushClip(box);
-    DrawGui.rect({
-      position: { x: PANEL.x + 230, y: y - 20, z: 0 },
-      size: { width: 120, height: 100 },
-      rotation: t * 1.5,
-      color: COLOR.GOLD,
-      outline: { width: 3, color: COLOR.BLACK },
-      rounded: 12,
-    });
-    DrawGui.popClip();
-  }
-  DrawGui.popClip();
-}
+//     // every fifth row clips a spinning card to its own rounded box
+//     if (i % 5 !== 2) continue;
+//     const box = {
+//       position: { x: PANEL.x + 200, y: y + 10 },
+//       size: { width: 180, height: PANEL.rowHeight - 20 },
+//       rounded: 8,
+//     };
+//     DrawGui.pushClip(box);
+//     DrawGui.rect({
+//       position: { x: PANEL.x + 230, y: y - 20, z: 0 },
+//       size: { width: 120, height: 100 },
+//       rotation: t * 1.5,
+//       color: COLOR.GOLD,
+//       outline: { width: 3, color: COLOR.BLACK },
+//       rounded: 12,
+//     });
+//     DrawGui.popClip();
+//   }
+//   DrawGui.popClip();
+// }
 
-function rotatedPanel(t: number) {
-  const rotation = Math.sin(t * 0.6) * 0.5;
-  const panel: DrawRect = {
-    position: { x: 560, y: 120, z: 0 },
-    size: { width: 360, height: 280 },
-    rotation,
-    color: COLORS.panel,
-    outline: { width: 3, color: COLORS.border },
-    rounded: [40, 8, 40, 8],
-  };
-  DrawGui.rect(panel);
-  DrawGui.pushClip({ ...panel, inset: 3 });
-  for (let i = 0; i < 6; i++) {
-    const angle = t + (i / 6) * Math.PI * 2;
-    DrawGui.circle({
-      position: {
-        x: 740 + Math.cos(angle) * 190,
-        y: 260 + Math.sin(angle) * 120,
-        z: 0,
-      },
-      radius: 56,
-      color: [80 + i * 30, 200 - i * 20, 255, 200],
-      outline: { width: 3, color: COLOR.WHITE },
-    });
-  }
-  DrawGui.sprite({
-    position: { x: 640, y: 200, z: 0 },
-    texture: "landUI",
-    size: { width: 220, height: 140 },
-    rotation: -t,
-  });
-  DrawGui.textBox(NOTE_BOX, {
-    position: { x: 600, y: 140 - ((t * 30) % 200), z: 0 },
-    color: COLORS.text,
-    outline: { width: 2, color: COLOR.BLACK },
-  });
-  DrawGui.popClip();
-}
+// function rotatedPanel(t: number) {
+//   const rotation = Math.sin(t * 0.6) * 0.5;
+//   const panel: GuiRect = {
+//     position: { x: 560, y: 120, z: 0 },
+//     size: { width: 360, height: 280 },
+//     rotation,
+//     color: COLORS.panel,
+//     outline: { width: 3, color: COLORS.border },
+//     rounded: [40, 8, 40, 8],
+//   };
+//   DrawGui.rect(panel);
+//   DrawGui.pushClip({ ...panel, inset: 3 });
+//   for (let i = 0; i < 6; i++) {
+//     const angle = t + (i / 6) * Math.PI * 2;
+//     DrawGui.circle({
+//       position: {
+//         x: 740 + Math.cos(angle) * 190,
+//         y: 260 + Math.sin(angle) * 120,
+//         z: 0,
+//       },
+//       radius: 56,
+//       color: [80 + i * 30, 200 - i * 20, 255, 200],
+//       outline: { width: 3, color: COLOR.WHITE },
+//     });
+//   }
+//   DrawGui.sprite({
+//     position: { x: 640, y: 200, z: 0 },
+//     texture: "landUI",
+//     size: { width: 220, height: 140 },
+//     rotation: -t,
+//   });
+//   DrawGui.textBox(NOTE_BOX, {
+//     position: { x: 600, y: 140 - ((t * 30) % 200), z: 0 },
+//     color: COLORS.text,
+//     outline: { width: 2, color: COLOR.BLACK },
+//   });
+//   DrawGui.popClip();
+// }
 
 function worldWindow(t: number) {
   const opening = {
@@ -140,6 +140,7 @@ function worldWindow(t: number) {
     size: { width: 500, height: 360 },
     rotation: t * 0.2,
     rounded: 60,
+    inset: 2,
   };
   Draw.rect({
     position: { ...opening.position, z: 0 },

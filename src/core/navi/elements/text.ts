@@ -1,4 +1,4 @@
-import { DrawGui as Draw } from "@aurora/urp/draw";
+import { DrawGui as Draw } from "@aurora/urp/draw/draw";
 import TextLayout from "@aurora/text/textLayout";
 import Navi from "../navi";
 import UINode, { NodeProps } from "../node";
@@ -63,7 +63,7 @@ export default class UIText extends UINode {
 
     Draw.text({
       ...this.paintTextStyle,
-      position: { x, y: box.y, z: 0 },
+      position: { x, y: box.y },
       text: this.lastText,
       font: this.style.textFont,
       size: fontSize,

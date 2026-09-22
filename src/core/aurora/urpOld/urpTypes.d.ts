@@ -104,8 +104,6 @@ export interface DrawClip {
   inset?: number;
 }
 
-export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z" | "gx+gy+z";
-export type SortAnchor = "top" | "center" | "bottom";
 export interface URPSortConfig {
   mode: SortMode;
   anchor: SortAnchor;

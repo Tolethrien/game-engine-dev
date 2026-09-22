@@ -14,13 +14,7 @@ import VertexLayout, {
   VertexFields,
   VertexWriter,
 } from "../../utils/vertexLayout";
-import {
-  CLIP,
-  ClipShape,
-  DEFAULT_MATERIAL,
-  DrawApi,
-  SHAPE,
-} from "../drawApi";
+import { CLIP, ClipShape, DEFAULT_MATERIAL, DrawApi, SHAPE } from "../drawApi";
 import Material from "../../material";
 import shader from "../shaders/draw.wgsl?raw";
 import backdropShader from "../shaders/backdrop.wgsl?raw";
@@ -635,10 +629,26 @@ export default class DrawPass extends MultiPass {
       const texel = 2 ** (level + 1);
       const size = ctx.size(BACKDROP.temp, level);
       const { clamp } = AxiomMath;
-      const left = clamp(Math.floor((group.minX - margin) / texel), 0, size.width);
-      const top = clamp(Math.floor((group.minY - margin) / texel), 0, size.height);
-      const right = clamp(Math.ceil((group.maxX + margin) / texel), 0, size.width);
-      const bottom = clamp(Math.ceil((group.maxY + margin) / texel), 0, size.height);
+      const left = clamp(
+        Math.floor((group.minX - margin) / texel),
+        0,
+        size.width,
+      );
+      const top = clamp(
+        Math.floor((group.minY - margin) / texel),
+        0,
+        size.height,
+      );
+      const right = clamp(
+        Math.ceil((group.maxX + margin) / texel),
+        0,
+        size.width,
+      );
+      const bottom = clamp(
+        Math.ceil((group.maxY + margin) / texel),
+        0,
+        size.height,
+      );
       // off screen: nothing of the group gets drawn either
       if (right <= left || bottom <= top) return;
 

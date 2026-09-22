@@ -1,0 +1,23 @@
+{
+  "RenderPass": {
+    "scope": "typescript",
+    "prefix": "auroraRenderPassSnip",
+    "body": [
+      "import {",
+      "PassContext,",
+      "PassResources,",
+      "PassTargets,",
+      "RenderPass,",
+      "} from '../../pass';",
+      "",
+      "export default class ${1:Name} extends RenderPass {",
+      " name: string = '${1:Name}';",
+      "destroy(){}",
+      "clearFrame() {}",
+      " async setup(targets: PassTargets){}",
+      " resources(res: PassResources){}",
+      " execute(encoder: GPURenderPassEncoder, ctx: PassContext){}",
+      "}",
+    ],
+  },
+}

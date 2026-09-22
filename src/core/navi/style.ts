@@ -1,9 +1,9 @@
 import { deepMerge, isPlainObject } from "@axiom/utils";
 import type {
   DrawBackdrop,
-  DrawOutline,
+  Outline as DrawOutline,
   DrawShadow,
-} from "@aurora/urp/urpTypes";
+} from "@aurora/urp/draw/drawTypes";
 import type { MaterialUse } from "@aurora/material";
 export type Direction = "row" | "col";
 export interface StyleOutline extends Omit<DrawOutline, "color"> {

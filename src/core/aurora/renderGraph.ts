@@ -200,6 +200,9 @@ export default class RenderGraph {
     if (!this.built) return;
     await this.buildPasses();
   }
+  public static beginFrame() {
+    for (const pass of this.passes) pass.clearFrame?.();
+  }
   public static async rebuild() {
     assert(
       this.preset !== null,
