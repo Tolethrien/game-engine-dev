@@ -1,5 +1,6 @@
 import Time from "@engine/time";
 import { IPerformanceModule } from "../interfaces";
+import { profilerState } from "../profilerState";
 interface FrameSample {
   time: number;
   frameTimeMs: number;
@@ -11,6 +12,7 @@ export class DevPerformance implements IPerformanceModule {
   private snapshotElapsedMs = 0;
 
   public endFrame(frameTimeMs: number) {
+    if (!profilerState.isOpen) return;
     const now = performance.now();
     this.history.push({ time: now, frameTimeMs, cpuTimeMs: Time.getCpuTime() });
     this.trimHistory(now);

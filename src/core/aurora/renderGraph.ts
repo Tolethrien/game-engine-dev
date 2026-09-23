@@ -17,6 +17,7 @@ import ResourcePool, {
 } from "./resourcePool";
 import SharedBinds from "./sharedBinds";
 import GpuTimer from "./timer";
+import type { RenderPreset } from "./preset";
 
 export interface GraphTexture {
   name: string;
@@ -33,7 +34,7 @@ export interface GraphTexture {
 export default class RenderGraph {
   private static passes: Pass[] = [];
   private static built = false;
-  private static preset: (() => Pass[]) | null = null;
+  private static preset: RenderPreset | null = null;
   private static buildId = 0;
   private static resources: Map<Pass, PassResources> = new Map();
   private static contexts: Map<Pass, PassContext> = new Map();
@@ -120,7 +121,7 @@ export default class RenderGraph {
   }
   private static async buildPasses() {
     const id = ++this.buildId;
-    const passes = this.preset!();
+    const passes = this.preset!.passes();
     const resources: Map<Pass, PassResources> = new Map();
     const contexts: Map<Pass, PassContext> = new Map();
     const targets: Map<Pass, PassTargets | PassFormats> = new Map();
@@ -195,7 +196,10 @@ export default class RenderGraph {
       if (!passes.includes(pass)) pass.destroy();
     }
   }
-  public static async setPreset(preset: () => Pass[]) {
+  public static get getPreset(): RenderPreset | null {
+    return this.preset;
+  }
+  public static async setPreset(preset: RenderPreset) {
     this.preset = preset;
     if (!this.built) return;
     await this.buildPasses();
@@ -231,6 +235,7 @@ export default class RenderGraph {
     for (let index = 0; index < this.activePasses.length; index++) {
       const pass = this.activePasses[index];
       GpuTimer.beginPass(pass.name);
+      debug.aurora.beginPass(pass);
 
       if (pass.type === "compute") this.executeCompute(encoder, pass);
       else if (pass.type === "multi")

@@ -1,6 +1,8 @@
 import Graph from "../blocks/graph";
 import { useRefreshRate } from "../hooks/useRefreshRate";
-import { HISTORY_SAMPLES, auroraData, performanceData } from "../data";
+import { HISTORY_SAMPLES, performanceData } from "../data";
+import { auroraStore } from "../aurora/store";
+import { METRIC_KEYS } from "@/core/debugger/modules/aurora/keys";
 
 function Metric(props: { label: string; value: string }) {
   return (
@@ -16,7 +18,7 @@ function Metric(props: { label: string; value: string }) {
 export default function TitleBar() {
   const refreshRate = useRefreshRate();
   const latestPerformance = performanceData.latest;
-  const latestAurora = auroraData.latest;
+  const gpuTime = () => auroraStore.stats(METRIC_KEYS.gpuSpan)?.median;
   const live = performanceData.live;
 
   return (
@@ -65,7 +67,9 @@ export default function TitleBar() {
         <Metric
           label="GPU"
           value={
-            latestAurora() ? `${latestAurora()!.gpu.time.toFixed(2)} ms` : "—"
+            auroraStore.live() && gpuTime() !== undefined
+              ? `${gpuTime()!.toFixed(2)} ms`
+              : "—"
           }
         />
       </div>

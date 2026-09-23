@@ -1,5 +1,5 @@
 import { profilerState } from "./profilerState";
-import { AuroraDevModule } from "./modules/gpu";
+import { AuroraDevModule } from "./modules/aurora/aurora";
 import { DevPerformance } from "./modules/performance";
 import { DevLogger } from "./modules/log";
 export class Debug {

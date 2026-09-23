@@ -17,37 +17,17 @@ export const LEVEL_CLASS: Record<ConsoleLevel, string> = {
   result: "text-fg-dim",
 };
 
-// placeholder until the logger module starts reporting
-const MOCK_LINES: ConsoleLine[] = [
+// placeholder until the logger module starts reporting; mock lines looked like real game errors
+const PLACEHOLDER_LINES: ConsoleLine[] = [
   {
     id: 1,
-    time: "12:04:31",
-    level: "log",
-    text: "Aurora device acquired: NVIDIA / ampere",
-  },
-  { id: 2, time: "12:04:31", level: "log", text: "Loaded 42 assets in 318 ms" },
-  {
-    id: 3,
-    time: "12:04:32",
-    level: "warn",
-    text: "Texture 'ui_atlas' is not power of two",
-  },
-  {
-    id: 4,
-    time: "12:04:33",
-    level: "command",
-    text: "> scene.reload MainMenu",
-  },
-  { id: 5, time: "12:04:33", level: "result", text: "scene reloaded in 84 ms" },
-  {
-    id: 6,
-    time: "12:04:41",
-    level: "error",
-    text: "WGSL compile failed: bloom.wgsl:37 unresolved identifier 'threshhold'",
+    time: "",
+    level: "result",
+    text: "console is not connected to the game yet",
   },
 ];
 
-export const [lines, setLines] = createSignal<ConsoleLine[]>(MOCK_LINES);
+export const [lines, setLines] = createSignal<ConsoleLine[]>(PLACEHOLDER_LINES);
 export const [draft, setDraft] = createSignal("");
 
 // placeholder: echoes the command until commands actually reach the game

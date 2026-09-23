@@ -49,11 +49,17 @@ interface PyramidPipelines {
 // a MultiPass because a backdrop group ends the draw step, blurs what is drawn so far and goes on
 export default class GuiPass extends MultiPass {
   name: string = "GuiPass";
+  category = "gui";
   private instances = new GrowingBuffer({
     label: "guiPassInstances",
     stride: GUI_LAYOUT.stride,
     usage: AuroraUsage.buffer.VERTEX,
   });
+  private readonly frameStats = {
+    instances: 0,
+    instanceBytes: 0,
+    uploadedBytes: 0,
+  };
   private writer = GUI_LAYOUT.createWriter(this.instances);
   private clips = new ClipBuffer("guiPassClips");
   private backdrops = new BackdropTracker();
@@ -71,6 +77,13 @@ export default class GuiPass extends MultiPass {
   destroy() {
     this.instances.destroy();
     this.clips.destroy();
+  }
+  stats() {
+    const stats = this.frameStats;
+    stats.instances = this.instances.getCount;
+    stats.instanceBytes = this.instances.getGpuBytes;
+    stats.uploadedBytes = this.instances.getUsedBytes;
+    return stats;
   }
   public get getClips() {
     return this.clips;

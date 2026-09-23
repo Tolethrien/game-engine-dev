@@ -1,6 +1,9 @@
 import type { Pass } from "@/core/aurora/pass";
 import type { GraphTexture } from "@/core/aurora/renderGraph";
 import type { GpuSteps } from "@/core/aurora/timer";
+import type { AuroraConfig } from "@/core/aurora/config";
+import type Material from "@/core/aurora/material";
+import type { RenderPreset } from "@/core/aurora/preset";
 
 export interface ILogger {
   log: (data: unknown) => void;
@@ -13,16 +16,24 @@ export interface IPerformanceModule {
   endFrame(frameTimeMs: number): void;
 }
 export interface AuroraDebugData {
-  gpuTime: number | null;
   steps: Readonly<GpuSteps>;
   activePasses: readonly Pass[];
   textures: () => GraphTexture[];
-  poolTotal: () => number;
+  pool: () => {
+    used: ReadonlyMap<GPUTexture, string>;
+    free: ReadonlyMap<string, readonly GPUTexture[]>;
+  };
+  settings: () => DeepReadonly<AuroraConfig>;
+  renderSize: () => Size2D;
+  canvas: () => { width: number; height: number; format: GPUTextureFormat };
+  materials: () => readonly Material[];
+  preset: () => RenderPreset | null;
 }
 export interface IAuroraModule {
   connect(source: () => AuroraDebugData): void;
   endFrame(): void;
-  watchDevice(device: GPUDevice): void;
+  beginPass(pass: Pass): void;
+  watchDevice(device: GPUDevice, adapter: GPUAdapter): void;
   watchShader(label: string, module: GPUShaderModule, code: string): void;
   watchPipeline(
     pipeline: GPURenderPipeline,
@@ -31,6 +42,8 @@ export interface IAuroraModule {
   watchRender(encoder: GPURenderPassEncoder): GPURenderPassEncoder;
   watchCompute(encoder: GPUComputePassEncoder): GPUComputePassEncoder;
   watchClear(): void;
+  poolAcquire(texture: GPUTexture): void;
+  poolRelease(texture: GPUTexture): void;
 }
 export interface IDebug {
   performance: IPerformanceModule;

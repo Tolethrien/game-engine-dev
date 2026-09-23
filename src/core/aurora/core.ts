@@ -9,6 +9,7 @@ import {
 } from "./config";
 import type { PipelineTargets } from "./pass";
 import RenderGraph from "./renderGraph";
+import Material from "./material";
 import ResourcePool from "./resourcePool";
 import SharedBinds, { CameraData, GlobalBinding } from "./sharedBinds";
 import GpuTimer from "./timer";
@@ -57,21 +58,31 @@ export default class Aurora {
       navigator.gpu !== undefined,
       "WebGPU is not supported on this browser.",
     );
-    const adapter = await navigator.gpu.requestAdapter();
+    const adapter = await navigator.gpu.requestAdapter({
+      powerPreference: "high-performance",
+    });
     assert(adapter !== null, "Failed to get GPU adapter");
     this.adapter = adapter;
     this.device = await adapter.requestDevice({
       requiredFeatures: ["timestamp-query"],
     });
-    debug.aurora.watchDevice(this.device);
+    debug.aurora.watchDevice(this.device, adapter);
     GpuTimer.init();
     SharedBinds.init();
     debug.aurora.connect(() => ({
-      gpuTime: GpuTimer.getTime,
       steps: GpuTimer.getSteps,
       activePasses: RenderGraph.getActivePasses,
       textures: () => RenderGraph.describeResources(),
-      poolTotal: () => ResourcePool.getTextureCount,
+      pool: () => ResourcePool.getPoolTextures,
+      settings: () => this.settings,
+      renderSize: () => this.renderSize,
+      canvas: () => ({
+        width: this.canvas.width,
+        height: this.canvas.height,
+        format: this.canvasFormat,
+      }),
+      materials: () => Material.getAll,
+      preset: () => RenderGraph.getPreset,
     }));
     this.canvasFormat = navigator.gpu.getPreferredCanvasFormat();
     ctx.configure({

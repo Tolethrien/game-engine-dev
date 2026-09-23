@@ -3,8 +3,10 @@ import "./profiler.css";
 import TitleBar from "./components/titleBar";
 import BottomConsole from "./console/bottomConsole";
 import { TabBar, TabContent } from "./tabs";
+import { initTheme } from "./theme";
 
 function App() {
+  initTheme();
   return (
     <>
       <TitleBar />

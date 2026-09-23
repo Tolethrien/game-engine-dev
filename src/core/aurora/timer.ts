@@ -3,8 +3,9 @@ import Aurora from "./core";
 const BYTES_PER_QUERY = BigUint64Array.BYTES_PER_ELEMENT;
 const TIMER_CONFIG = {
   readbackSlots: 3,
-  averageWindowMs: 1000,
-  averageRingCapacity: 256,
+  // same window as the profiler's stats (AURORA_HISTORY.statsReports), so both show the same median
+  windowMs: 5000,
+  windowCapacity: 4096,
 };
 
 export interface GpuSteps {
@@ -13,6 +14,9 @@ export interface GpuSteps {
   owners: string[];
   labels: string[];
   times: number[];
+  starts: number[];
+  span: number;
+  busy: number;
 }
 
 interface Readback {
@@ -23,44 +27,56 @@ interface Readback {
   frame: number;
 }
 
-class AverageRing {
-  private readonly values = new Float64Array(TIMER_CONFIG.averageRingCapacity);
-  private readonly stamps = new Float64Array(TIMER_CONFIG.averageRingCapacity);
+class MedianWindow {
+  private readonly values = new Float64Array(TIMER_CONFIG.windowCapacity);
+  private readonly stamps = new Float64Array(TIMER_CONFIG.windowCapacity);
+  private readonly scratch = new Float64Array(TIMER_CONFIG.windowCapacity);
   private head = 0;
   private count = 0;
-  private sum = 0;
+  private cached: number | null = null;
+  private dirty = false;
 
   public push(value: number, now: number) {
     while (
       this.count > 0 &&
-      now - this.oldestStamp() > TIMER_CONFIG.averageWindowMs
+      now - this.oldestStamp() > TIMER_CONFIG.windowMs
     ) {
       this.dropOldest();
     }
-    if (this.count === TIMER_CONFIG.averageRingCapacity) this.dropOldest();
+    if (this.count === TIMER_CONFIG.windowCapacity) this.dropOldest();
 
     this.values[this.head] = value;
     this.stamps[this.head] = now;
-    this.head = (this.head + 1) % TIMER_CONFIG.averageRingCapacity;
+    this.head = (this.head + 1) % TIMER_CONFIG.windowCapacity;
     this.count++;
-    this.sum += value;
+    this.dirty = true;
   }
 
-  public get average() {
-    return this.count > 0 ? this.sum / this.count : null;
+  public get median() {
+    if (!this.dirty) return this.cached;
+    this.dirty = false;
+    if (this.count === 0) return (this.cached = null);
+
+    const start = this.oldestIndex();
+    for (let i = 0; i < this.count; i++) {
+      this.scratch[i] = this.values[(start + i) % TIMER_CONFIG.windowCapacity];
+    }
+    const sorted = this.scratch.subarray(0, this.count).sort();
+    const middle = this.count >> 1;
+    return (this.cached =
+      this.count % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2);
   }
 
   private oldestIndex() {
     return (
-      (this.head - this.count + TIMER_CONFIG.averageRingCapacity) %
-      TIMER_CONFIG.averageRingCapacity
+      (this.head - this.count + TIMER_CONFIG.windowCapacity) %
+      TIMER_CONFIG.windowCapacity
     );
   }
   private oldestStamp() {
     return this.stamps[this.oldestIndex()];
   }
   private dropOldest() {
-    this.sum -= this.values[this.oldestIndex()];
     this.count--;
   }
 }
@@ -78,13 +94,16 @@ export default class GpuTimer {
   private static frameIndex = 0;
   private static readFrame = -1;
   private static pending: Readback | null = null;
-  private static average = new AverageRing();
+  private static window = new MedianWindow();
   private static steps: GpuSteps = {
     frame: -1,
     count: 0,
     owners: [],
     labels: [],
     times: [],
+    starts: [],
+    span: 0,
+    busy: 0,
   };
 
   public static init() {
@@ -168,7 +187,7 @@ export default class GpuTimer {
   }
 
   public static get getTime() {
-    return this.average.average;
+    return this.window.median;
   }
 
   public static get getSteps(): Readonly<GpuSteps> {
@@ -180,18 +199,39 @@ export default class GpuTimer {
     this.steps.owners.length = 0;
     this.steps.labels.length = 0;
     this.steps.times.length = 0;
+    this.steps.starts.length = 0;
 
-    let total = 0;
+    let frameBegin = 0n;
+    let frameEnd = 0n;
+    let found = false;
     for (let i = 0; i < count; i++) {
-      const time = this.diff(times[i * 2], times[i * 2 + 1]);
-      total += time;
+      const begin = times[i * 2];
+      const end = times[i * 2 + 1];
+      if (end <= begin) continue;
+      if (!found || begin < frameBegin) frameBegin = begin;
+      if (!found || end > frameEnd) frameEnd = end;
+      found = true;
+    }
+
+    let busy = 0;
+    for (let i = 0; i < count; i++) {
+      const begin = times[i * 2];
+      const end = times[i * 2 + 1];
+      const time = this.diff(begin, end);
+      busy += time;
       this.steps.owners.push(slot.owners[i]);
       this.steps.labels.push(slot.labels[i]);
       this.steps.times.push(time);
+      this.steps.starts.push(
+        end > begin ? Number(begin - frameBegin) / 1_000_000 : 0,
+      );
     }
+    const span = found ? Number(frameEnd - frameBegin) / 1_000_000 : 0;
     this.steps.frame = slot.frame;
     this.steps.count = count;
-    this.average.push(total, performance.now());
+    this.steps.span = span;
+    this.steps.busy = busy;
+    this.window.push(span, performance.now());
   }
 
   private static diff(start: bigint, end: bigint) {

@@ -1,4 +1,4 @@
-import { For } from "solid-js";
+import { Index } from "solid-js";
 import AxiomMath from "@/core/axiom/math";
 
 export interface BarItem {
@@ -18,25 +18,25 @@ export default function Bars(props: {
 
   return (
     <div class="grid grid-cols-[minmax(0,max-content)_1fr_auto] items-center gap-x-2 gap-y-1">
-      <For each={props.items}>
+      <Index each={props.items}>
         {(item) => (
           <>
-            <span class="truncate text-fg-dim">{item.label}</span>
+            <span class="truncate text-fg-dim">{item().label}</span>
             <div class="h-2 overflow-hidden rounded-sm bg-divider">
               <div
                 class="h-full rounded-sm"
                 style={{
-                  width: `${percent(item.value)}%`,
+                  width: `${percent(item().value)}%`,
                   background: props.color ?? "var(--color-live)",
                 }}
               />
             </div>
             <span class="text-right tabular-nums">
-              {item.text ?? item.value.toLocaleString()}
+              {item().text ?? item().value.toLocaleString()}
             </span>
           </>
         )}
-      </For>
+      </Index>
     </div>
   );
 }

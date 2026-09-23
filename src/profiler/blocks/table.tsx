@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Index, Show } from "solid-js";
 
 export interface TableColumn {
   label: string;
@@ -10,6 +10,8 @@ export default function Table(props: {
   columns: TableColumn[];
   rows: string[][];
   empty?: string;
+  // any CSS color drawn as a swatch before the cell text
+  cellColor?: (row: number, column: number) => string | undefined;
 }) {
   const template = () =>
     props.columns.map((column) => column.width ?? "minmax(0,1fr)").join(" ");
@@ -29,21 +31,30 @@ export default function Table(props: {
         )}
       </For>
 
-      <For each={props.rows}>
-        {(row) => (
-          <For each={row}>
+      {/* Index keeps the DOM across updates (rows are new arrays each time), so a text selection survives */}
+      <Index each={props.rows}>
+        {(row, rowIndex) => (
+          <Index each={row()}>
             {(cell, index) => (
               <div
                 class="truncate border-b border-divider px-1.5 py-0.5"
-                classList={{ "text-right tabular-nums": alignedRight(index()) }}
-                title={cell}
+                classList={{ "text-right tabular-nums": alignedRight(index) }}
+                title={cell()}
               >
-                {cell}
+                <Show when={props.cellColor?.(rowIndex, index)}>
+                  {(color) => (
+                    <span
+                      class="mr-1.5 inline-block size-3 rounded-sm border border-outline align-[-2px]"
+                      style={{ background: color() }}
+                    />
+                  )}
+                </Show>
+                {cell()}
               </div>
             )}
-          </For>
+          </Index>
         )}
-      </For>
+      </Index>
 
       <Show when={props.rows.length === 0}>
         <div class="col-span-full px-1.5 py-1 italic text-fg-dim">

@@ -61,6 +61,12 @@ export default class GrowingBuffer {
   public get getStride() {
     return this.stride;
   }
+  public get getGpuBytes() {
+    return this.gpuCapacity * this.stride * WORD;
+  }
+  public get getUsedBytes() {
+    return this.count * this.stride * WORD;
+  }
 
   public reserve(count: number) {
     this.count = count;

@@ -2,7 +2,7 @@ import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-j
 import AxiomMath from "@/core/axiom/math";
 import Panel from "./panel";
 import LayoutBar from "./layoutBar";
-import { PANELS, type PanelId } from "../panels/registry";
+import { PANELS, panelTitle, type PanelId } from "../panels/registry";
 import {
   gridArea,
   moveItem,
@@ -58,7 +58,7 @@ export default function Grid(props: {
     props.panels.map(
       (id): LayoutItem => ({
         id,
-        title: PANELS[id].title,
+        title: panelTitle(PANELS[id]),
         w: Math.min(PANELS[id].size.w, columns()),
         h: PANELS[id].size.h,
       }),

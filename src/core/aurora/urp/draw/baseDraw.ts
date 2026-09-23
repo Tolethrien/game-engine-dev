@@ -568,7 +568,7 @@ export default abstract class BaseDraw<Writer extends InstanceWriter> {
   private warnNoTarget() {
     this.warnOnce(
       "target",
-      `${this.name}: nothing to draw into yet, call it after URP2.init and Aurora.build`,
+      `${this.name}: nothing to draw into yet, call it after URP.init and Aurora.build`,
     );
   }
 }

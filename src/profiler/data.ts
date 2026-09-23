@@ -25,6 +25,3 @@ function createHistory<Snapshot>(
 export const performanceData = createHistory<PerformanceSnapshot>(
   window.API.DEBUG.onPerformanceSnapshot,
 );
-export const auroraData = createHistory<AuroraSnapshot>(
-  window.API.DEBUG.onAuroraSnapshot,
-);

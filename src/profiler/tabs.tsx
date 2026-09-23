@@ -5,6 +5,7 @@ import ConsoleTab from "./tabs/console";
 import Grid from "./grid/grid";
 import type { PanelId } from "./panels/registry";
 import { pinnedPanels } from "./pins";
+import OptionsMenu from "./components/optionsMenu";
 
 export type TabId = "custom" | "console" | "aurora";
 
@@ -25,13 +26,14 @@ export const TABS: Record<TabId, TabDefinition> = {
   aurora: {
     label: "Aurora",
     panels: [
-      "auroraGpu",
-      "auroraPassTimes",
-      "auroraCalls",
-      "auroraGeometry",
-      "auroraCounters",
+      "auroraFrame",
+      "auroraGpuTimings",
+      "auroraTimeline",
+      "auroraDraw",
       "auroraResources",
-      "auroraMockList",
+      "auroraVram",
+      "auroraConfig",
+      "auroraPreset",
     ],
   },
 };
@@ -62,6 +64,7 @@ export function TabBar() {
           </button>
         )}
       </For>
+      <OptionsMenu />
     </nav>
   );
 }

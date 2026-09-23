@@ -49,6 +49,13 @@ function onDevServer() {
   //   title: "Misa Profiler Devtools",
   // });
 }
+export function setProfilerTitleBarColors(colors: {
+  color: string;
+  symbolColor: string;
+}) {
+  if (!profilerWindow || profilerWindow.isDestroyed()) return;
+  profilerWindow.setTitleBarOverlay({ ...colors, height: TITLEBAR.height });
+}
 export function sendToProfiler(channel: string, data?: unknown) {
   if (!profilerWindow || profilerWindow.isDestroyed()) return;
   profilerWindow.webContents.send(channel, data);

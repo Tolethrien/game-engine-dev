@@ -56,16 +56,23 @@ Zbiera 30-sekundowe rolling window próbek klatek, raz na sekundę wysyła migaw
 ```ts
 debug.aurora.connect(() => AuroraDebugData); // raz, w Aurora.init
 debug.aurora.endFrame(); // wołane przez Aurora.endFrame co klatkę
+debug.aurora.beginPass(pass); // RenderGraph.execute, przed każdym passem
 debug.aurora.watchDevice / watchShader / watchPipeline / watchRender / watchCompute / watchClear
+debug.aurora.poolAcquire(texture) / poolRelease(texture); // ResourcePool.acquire/release
 ```
 
-Aurora niczego nie liczy sama (poza `GpuTimer`, który jest zawsze). Moduł dev **pobiera** dane przez `connect` i tylko przy otwartym profilerze (`profilerState.isOpen`); przy zamkniętym nie robi nic poza tym sprawdzeniem.
+Aurora niczego nie liczy sama (poza `GpuTimer`, który jest zawsze). Moduł dev (`modules/aurora/`) **pobiera** dane przez `connect` i liczy tylko przy otwartym profilerze (`profilerState.isOpen`); po zamknięciu czyści okna próbek.
 
-- **Źródło** (`AuroraDebugData`): tanie referencje co klatkę (`gpuTime`, `steps` = `GpuTimer.getSteps`, `activePasses` = obiekty `Pass`) i funkcje wołane tylko przy raporcie (`textures()` = `RenderGraph.describeResources()`, `poolTotal()`).
-- **Czasy GPU**: co klatkę, jeśli `steps.frame` jest nowy, czasy kroków trafiają do akumulatorów per pass (owner) i per label (suma, próbki, max). Przy raporcie: średnie z okna, zerowanie.
-- **Liczniki passów**: opcjonalna metoda `Pass.counters?()`, wołana przy raporcie na aktywnych passach, zapisywana pod `pass.name`.
-- **Błędy**: `uncapturederror` (`gpu`), `device.lost` poza `destroyed` (`lost`), błędy kompilacji shaderów (`shader`) — jedna mapa z licznikiem, w konsoli raz na komunikat.
-- **Raport** (co ~1 s) → `AuroraSnapshot` (`src/types/preload.d.ts`): `gpu {time, timeMax, passes, steps}`, `calls`, `passes`, `geometry` (ostatnia klatka), `counters`, `resources {activePasses, textures, pool}`, `errors`. `gpu.steps` i `errors` są wysyłane, ale profiler ich jeszcze nie wyświetla.
+- **Źródło** (`AuroraDebugData`): `steps` = `GpuTimer.getSteps` (`times`, `starts`, `span`, `busy`), `activePasses` = obiekty `Pass`, `textures()` = `RenderGraph.describeResources()` (na żądanie).
+- **Bufor próbek** (`seriesBuffer.ts`): surowe wartości per klatka pod kluczami z `keys.ts` (`METRIC_KEYS`); gra niczego nie uśrednia.
+- **Drzewo GPU** (`gpuTree.ts`): labele kroków dzielone po `:` (`GuiPass:backdrop:mip2` → `GuiPass` → `backdrop` → `mip2`); per węzeł i klatka suma czasów, span i liczba kroków. Węzeł nieobecny w klatce nie dostaje zera — obecność liczona osobno.
+- **Timeline klatki** (`timeline.ts`, `GpuTimeline`): kopia kroków (`owner`, `label`, `start`, `time`) klatki o największym `span` od poprzedniego raportu (ostatnia klatka interwału prawie nigdy nie jest spike'iem); kroki bez poprawnych timestampów pomijane. Panel „GPU timeline” rysuje ją jako Gantt (tor = pass, kolor = czas względem mediany węzła z 5 s, tryby last / peak 5 s / freeze, zoom kółkiem, przesuwanie przeciąganiem, dwuklik = reset).
+- **Encoder** (`encoderStats.ts`): `debug.aurora.beginPass(pass)` ustawia kategorię (`Pass.category`), owinięte encodery liczą `draws/instances/vertices/triangles/pipelines/steps` per kategoria i w `total`.
+- **Statystyki passów**: opcjonalna `Pass.stats?()`, sumowana per kategoria jako `stat:<category>.<key>`.
+- **Zdarzenia**: `uncapturederror` (`gpu`), `device.lost` poza `destroyed` (`lost`), błędy i ostrzeżenia kompilacji shaderów (`shader`) → lista `DebugEvent` z licznikiem i klatkami, zbierane zawsze, w konsoli raz na komunikat.
+- **Szczyt puli**: `ResourcePool.acquire/release` wołają `debug.aurora.poolAcquire/poolRelease`; moduł zawsze liczy bajty w użyciu, przy zbieraniu wysyła szczyt z klatki (`pool.peak`).
+- **Raport** (`AuroraReport`, co 250 ms, kanał `debug:aurora`): `series` (tablice wartości per klucz od poprzedniego raportu), co 1 s `state` (VRAM z `memory.ts`, pula `allocated/free`, tekstury grafu z `bytes`, adapter i `app.getGPUInfo`), `events` gdy się zmieniły (pierwszy raport po otwarciu: stan i wszystkie zdarzenia), `timeline` (najgorsza klatka interwału, `GpuTimelineFrame`).
+- **Profiler**: `src/profiler/aurora/store.ts` (`auroraStore`: `values`, `stats` z 5 s, `keys`, `events`, `live`, `latestState`; historia 30 s, czyszczona przy reloadzie gry), statystyki w `stats.ts`.
 
 Na prodzie `prodAurora` ma puste `connect`/`endFrame`, więc gettery Aurory zostają w kodzie, ale nikt ich nie woła.
 
@@ -79,7 +86,7 @@ Osobne okno Electron (Solid.js), tworzone automatycznie przy starcie aplikacji *
 - listę paneli z `src/profiler/panels/registry.tsx` (dziś: `aurora`, `cello`) — przeciąganą/reorderowalną, kolejność zapisywana w `localStorage`,
 - konsolę tekstową (na razie placeholder — wpisane komendy nie trafiają jeszcze do gry).
 
-Przepływ danych: `debug.performance`/`debug.aurora` (w oknie gry) → `window.API.DEBUG.send*Snapshot` (preload) → proces główny Electrona przekazuje kanał (`registerDebugIPC`) → okno profilera nasłuchuje (`onPerformanceSnapshot`/`onAuroraSnapshot`).
+Przepływ danych: `debug.performance`/`debug.aurora` (w oknie gry) → `window.API.DEBUG.sendPerformanceSnapshot`/`sendAuroraReport` (preload) → proces główny Electrona przekazuje kanał (`registerDebugIPC`) → okno profilera nasłuchuje (`onPerformanceSnapshot`/`onAuroraReport`).
 
 ---
 
@@ -115,7 +122,7 @@ Pliki:
 | [`profilerState.ts`](../src/core/debugger/profilerState.ts) | Śledzi, czy okno profilera jest aktualnie otwarte |
 | [`modules/log.ts`](../src/core/debugger/modules/log.ts) | `DevLogger` (real) + `prodLogger` (no-op) |
 | [`modules/performance.ts`](../src/core/debugger/modules/performance.ts) | `DevPerformance` (real) + `prodPerformance` (no-op) |
-| [`modules/gpu.ts`](../src/core/debugger/modules/gpu.ts) | `AuroraDevModule` (real) + `prodAurora` (no-op) |
+| [`modules/aurora/aurora.ts`](../src/core/debugger/modules/aurora/aurora.ts) | `AuroraDevModule` (real) + `prodAurora` (no-op); obok `keys.ts`, `seriesBuffer.ts`, `gpuTree.ts`, `timeline.ts`, `encoderStats.ts`, `memory.ts` |
 
 Wybór implementacji dzieje się **wyłącznie** przez alias `@debug` w Vite (patrz sekcja wyżej) — `debug.ts`/`debug.prod.ts` nie importują się nawzajem ani nie sprawdzają trybu w runtime.
 

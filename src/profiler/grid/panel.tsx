@@ -1,6 +1,11 @@
 import { Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { PANELS, type PanelDefinition, type PanelId } from "../panels/registry";
+import {
+  PANELS,
+  panelTitle,
+  type PanelDefinition,
+  type PanelId,
+} from "../panels/registry";
 import { isPinned, togglePin } from "../pins";
 import { gridArea, type Area, type Cell } from "./layouts";
 
@@ -35,7 +40,7 @@ export default function Panel(props: {
         onPointerDown={(event) => props.draggable && props.onGrab(event)}
       >
         <span class="min-w-0 truncate text-caption uppercase tracking-[0.1em] text-fg-dim">
-          {definition().title}
+          {panelTitle(definition())}
         </span>
         <div class="ml-auto flex items-center">
           <button

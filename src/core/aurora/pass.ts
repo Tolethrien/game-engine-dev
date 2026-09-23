@@ -68,6 +68,7 @@ type PassContexts = {
 export abstract class Pass<T extends keyof PassEncoders = keyof PassEncoders> {
   abstract readonly name: string;
   abstract readonly type: T;
+  category?: string;
 
   setup(targets: PassSetups[T]): Promise<void> | void {}
   resources(res: PassResources): void {}
@@ -77,7 +78,7 @@ export abstract class Pass<T extends keyof PassEncoders = keyof PassEncoders> {
   destroy(): void {}
   /** clears vuffers and stuff here - beginning of a frame */
   clearFrame?(): void {}
-  counters?(): Record<string, number>;
+  stats?(): Readonly<Record<string, number>>;
   abstract execute(encoder: PassEncoders[T], ctx: PassContexts[T]): void;
 }
 

@@ -19,6 +19,7 @@
 
 - podgląd tekstur/render targetów
 - staty (draw calls, tris, verts, batches)
+- GPU timeline: klik w spike na wykresie „GPU frame” otwiera timeline tej klatki (wymaga trzymania klatek po numerze), przebieg CPU (encoder/submit) obok GPU, eksport do Chrome trace
 - błędy WebGPU: uncapturederror na device, device.lost, getCompilationInfo() dla shaderów (błędy/warningi kompilacji WGSL z linią)
 
 ## dogma/pragma debug

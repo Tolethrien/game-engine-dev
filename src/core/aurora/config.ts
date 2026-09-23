@@ -2,7 +2,6 @@ import { TextureSource, UISource } from "./assetManager";
 import { FontSource } from "./text/font";
 
 export type RenderRes = "1920x1080" | "1280x720" | "854x480" | "640x360";
-export type Profiler = "none" | "minimal" | "normal" | "extended";
 export type ColorSpace = "linear" | "gamma";
 /** pages for glyphs of dynamic fonts, allocated once in config, they do not grow yet */
 export interface FontAtlasConfig {
@@ -26,7 +25,6 @@ export interface AuroraConfig {
   userUI: UISource[];
   fonts: FontSource[];
   fontAtlas: FontAtlasConfig;
-  debugger: Profiler;
 }
 export type ChangeableRenderConfig = {
   rendering: Pick<AuroraConfig["rendering"], "renderRes" | "canvasColor">;
@@ -45,5 +43,4 @@ export const BASE_CONFIG: AuroraConfig = {
   userUI: [],
   fonts: [],
   fontAtlas: { pageSize: 1024, pages: 4, spread: 8 },
-  debugger: "minimal",
 };

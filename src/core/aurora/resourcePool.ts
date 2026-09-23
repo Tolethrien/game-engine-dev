@@ -1,4 +1,5 @@
 import { assert } from "@axiom/utils";
+import { debug } from "@debug";
 import Aurora from "./core";
 
 type SizeBase = "render" | "canvas";
@@ -31,10 +32,11 @@ export default class ResourcePool {
   private static views: Map<GPUTexture, Map<number, GPUTextureView>> =
     new Map();
 
-  public static get getTextureCount() {
-    let count = this.texturesUsed.size;
-    this.texturesFree.forEach((list) => (count += list.length));
-    return count;
+  public static get getPoolTextures() {
+    return {
+      used: this.texturesUsed as ReadonlyMap<GPUTexture, string>,
+      free: this.texturesFree as ReadonlyMap<string, readonly GPUTexture[]>,
+    };
   }
   public static acquire(desc: TextureDescriptor): GPUTexture {
     const key = this.key(desc);
@@ -43,7 +45,7 @@ export default class ResourcePool {
     const tex = list.pop() ?? this.createTexture(desc, key);
     tex.label = desc.label ?? key;
     this.texturesUsed.set(tex, key);
-
+    debug.aurora.poolAcquire(tex);
     return tex;
   }
 
@@ -56,6 +58,7 @@ export default class ResourcePool {
     tex.label = key;
     this.texturesUsed.delete(tex);
     this.texturesFree.get(key)!.push(tex);
+    debug.aurora.poolRelease(tex);
   }
   private static key(desc: TextureDescriptor) {
     const { width, height } = this.resolveSize(desc.size);

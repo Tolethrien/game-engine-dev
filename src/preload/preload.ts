@@ -20,20 +20,29 @@ const DEBUG = {
   onPerformanceSnapshot: (callback: (data: PerformanceSnapshot) => void) =>
     on("debug:performance", callback),
   //aurora
-  sendAuroraSnapshot: (data: AuroraSnapshot) =>
+  sendAuroraReport: (data: AuroraReport) =>
     ipcRenderer.send("debug:aurora", data),
-  onAuroraSnapshot: (callback: (data: AuroraSnapshot) => void) =>
+  onAuroraReport: (callback: (data: AuroraReport) => void) =>
     on("debug:aurora", callback),
   //reload
   onGameReloaded: (callback: () => void) => on("debug:gameReloaded", callback),
   onProfilerState: (callback: (isOpen: boolean) => void) =>
     on("debug:profilerState", callback),
+  getProfilerState: () =>
+    ipcRenderer.invoke("debug:getProfilerState") as Promise<boolean>,
+  getGpuInfo: () => ipcRenderer.invoke("debug:getGpuInfo") as Promise<GpuInfo>,
   openProfiler: () => ipcRenderer.send("openProfiler"),
+};
+
+const PROFILER = {
+  setTitleBarColors: (colors: { color: string; symbolColor: string }) =>
+    ipcRenderer.send("profiler:setTitleBarColors", colors),
 };
 
 export const API = {
   WINDOW,
   DEBUG,
+  PROFILER,
 };
 if (process.contextIsolated) {
   try {

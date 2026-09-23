@@ -11,7 +11,7 @@ import blackOps from "@sandbox/assets/fonts/blackOpsOne/BlackOpsOne-Regular.ttf"
 import { COLOR } from "@/core/axiom/color";
 import { setupNaviTest, updateNaviTest } from "@sandbox/tests/naviTest";
 import { Draw, DrawGui } from "@/core/aurora/urp/draw/draw";
-import URP2 from "@/core/aurora/urp/urp";
+import URP from "@/core/aurora/urp/urp";
 import Time from "@/core/engine/time";
 import latoSdfPng from "@sandbox/assets/fonts/lato/Lato-Regular.mtsdf.png";
 import latoSdfJson from "@sandbox/assets/fonts/lato/Lato-Regular.mtsdf.json";
@@ -69,7 +69,7 @@ async function preload() {
   //     zRange: [0, 255],
   //   },
   // });
-  await URP2.init({ sortMode: "none", sortAnchor: "center" });
+  await URP.init({ sortMode: "y+x+z", sortAnchor: "center" });
   FPSOverlay.setVisible(true);
 }
 
@@ -81,6 +81,7 @@ function update() {
   Draw.sprite({
     position: { x: 0, y: 0, z: 0 },
     texture: "temp",
+    tint: COLOR.WHITE,
   });
   // clipTest(t);
   // guiTest(t);

@@ -42,11 +42,18 @@ const WORLD_BINDS = {
 
 export default class WorldPass extends RenderPass {
   name: string = "WorldPass";
+  category = "world";
   private vertexBuffer = new GrowingBuffer({
     label: "worldPassVertex",
     stride: WORLD_LAYOUT.stride,
     usage: AuroraUsage.buffer.VERTEX,
   });
+  private readonly frameStats = {
+    opaque: 0,
+    transparent: 0,
+    instanceBytes: 0,
+    uploadedBytes: 0,
+  };
   private keys = new Float64Array(64);
   private sorted = new GrowingBuffer({
     label: "worldPassSorted",
@@ -94,6 +101,21 @@ export default class WorldPass extends RenderPass {
     }
     this.writer.at(this.vertexBuffer.push());
     return this.writer;
+  }
+  stats() {
+    const stats = this.frameStats;
+    const sorting = this.sorter.sortAxes.length > 0;
+    stats.opaque = 0;
+    stats.instanceBytes = this.vertexBuffer.getGpuBytes + this.sorted.getGpuBytes;
+    stats.uploadedBytes = (sorting ? this.sorted : this.vertexBuffer).getUsedBytes;
+    for (const batch of this.opaqueBatches) {
+      if (!batch) continue;
+      stats.opaque += batch.buffer.getCount;
+      stats.instanceBytes += batch.buffer.getGpuBytes;
+      stats.uploadedBytes += batch.buffer.getUsedBytes;
+    }
+    stats.transparent = this.vertexBuffer.getCount;
+    return stats;
   }
   public get getClips() {
     return this.clips;
