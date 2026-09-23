@@ -94,6 +94,7 @@ export interface TextBase extends TextStyleBase {
   font?: string;
   size?: number;
   letterSpacing?: number;
+  kerning?: boolean;
 }
 export interface TextBoxBase extends TextStyleBase {
   scale?: number;

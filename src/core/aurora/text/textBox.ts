@@ -20,6 +20,7 @@ export interface TextBoxOptions {
   justifyLast: TextAlignCross;
   lineGap: number;
   letterSpacing: number;
+  kerning: boolean;
   overflow: TextOverflow;
   wrap: boolean;
   minSize: number;
@@ -34,6 +35,7 @@ const DEFAULTS: TextBoxOptions = {
   justifyLast: "start",
   lineGap: 0,
   letterSpacing: 0,
+  kerning: true,
   overflow: "visible",
   minSize: 1,
   wrap: true,
@@ -157,6 +159,21 @@ export default class TextBox {
   private advance(font: FontData, code: number, scale: number) {
     return TextLayout.advance(font, code) * scale;
   }
+  private kerning(
+    font: FontData,
+    previous: number,
+    code: number,
+    scale: number,
+  ) {
+    if (!this.options.kerning) return 0;
+    return TextLayout.kerning(font, previous, code) * scale;
+  }
+  private rowMeasure(font: FontData, scale: number, spacing: number) {
+    return (previous: number, code: number) =>
+      this.advance(font, code, scale) +
+      spacing +
+      this.kerning(font, previous, code, scale);
+  }
   private ellipsisCodes(font: FontData) {
     if (font.type === "dynamic") return ELLIPSIS;
     return font.glyphs.has(ELLIPSIS[0]) ? ELLIPSIS : DOTS;
@@ -183,7 +200,7 @@ export default class TextBox {
       const spacing = this.spacing(size, requested);
       this.wrapWords(
         this.options.wrap ? this.options.width : undefined,
-        (code) => this.advance(font, code, scale) + spacing,
+        this.rowMeasure(font, scale, spacing),
         spacing,
       );
       return;
@@ -205,12 +222,12 @@ export default class TextBox {
 
   private wrapWords(
     limit: number | undefined,
-    measure: (code: number) => number,
+    measure: (previous: number, code: number) => number,
     trailing: number,
   ) {
     const codes = this.codes;
     const count = codes.length;
-    const space = measure(CHAR.SPACE);
+    const space = measure(-1, CHAR.SPACE);
     let start = 0;
     let end = 0;
     let extent = 0;
@@ -238,12 +255,14 @@ export default class TextBox {
 
       const wordStart = i;
       let word = 0;
+      let previous = -1;
       while (
         i < count &&
         codes[i] !== CHAR.SPACE &&
         codes[i] !== CHAR.NEWLINE
       ) {
-        word += measure(codes[i]);
+        word += measure(previous, codes[i]);
+        previous = codes[i];
         i++;
       }
       if (!hasWord) {
@@ -326,12 +345,11 @@ export default class TextBox {
 
     const scale = size / font.size;
     const spacing = this.spacing(size, requested);
-    const measure = row
-      ? (code: number) => this.advance(font, code, scale) + spacing
-      : () => 1;
+    const measure = row ? this.rowMeasure(font, scale, spacing) : () => 1;
     const lineLimit = row ? width : this.capacity(height, step, gap);
+    // the ellipsis is never kerned, placeRows sets it the same way
     let ellipsis = 0;
-    for (const code of this.ellipsisCodes(font)) ellipsis += measure(code);
+    for (const code of this.ellipsisCodes(font)) ellipsis += measure(-1, code);
 
     if (count > max) {
       this.lineStart.length = max;
@@ -353,7 +371,7 @@ export default class TextBox {
     line: number,
     limit: number | undefined,
     ellipsis: number,
-    measure: (code: number) => number,
+    measure: (previous: number, code: number) => number,
   ) {
     const start = this.lineStart[line];
     let end = this.lineEnd[line];
@@ -361,12 +379,13 @@ export default class TextBox {
     if (limit !== undefined) {
       while (end > start && extent + ellipsis > limit) {
         end--;
-        extent -= measure(this.codes[end]);
+        const previous = end > start ? this.codes[end - 1] : -1;
+        extent -= measure(previous, this.codes[end]);
       }
     }
     while (end > start && this.codes[end - 1] === CHAR.SPACE) {
       end--;
-      extent -= measure(CHAR.SPACE);
+      extent -= measure(-1, CHAR.SPACE);
     }
     this.lineEnd[line] = end;
     this.lineExtent[line] = extent + ellipsis;
@@ -421,12 +440,16 @@ export default class TextBox {
       }
 
       const baseline = top + line * step + font.ascender * scale;
+      let previous = -1;
       for (let i = start; i < end; i++) {
         const code = this.codes[i];
         if (code === CHAR.SPACE) {
           pen += space + extra;
+          previous = -1;
           continue;
         }
+        pen += this.kerning(font, previous, code, scale);
+        previous = code;
         pen +=
           this.run.place(TextLayout.glyph(font, code), pen, baseline) + spacing;
       }

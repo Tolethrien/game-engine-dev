@@ -1,20 +1,13 @@
-import {
-  DEFAULT_FALLBACK,
-  DynamicFontSource,
-  EMPTY_GLYPH,
-  FontData,
-  Glyph,
-} from "./font";
+import { DEFAULT_FALLBACK, EMPTY_GLYPH, FontData, Glyph } from "./font";
 import GlyphAtlas from "./glyphAtlas";
 import { GlyphField } from "./distanceField";
+import FontCanvas from "./fontCanvas";
+import KerningTable from "./kerning";
 
 const FALLBACK_CODE = DEFAULT_FALLBACK.codePointAt(0)!;
 const FIELD = { scale: 4, maxSide: 512 };
 
 export default class DynamicFont implements FontData {
-  private static canvas: OffscreenCanvas | null = null;
-  private static context: OffscreenCanvasRenderingContext2D;
-
   public readonly name: string;
   public readonly type = "dynamic";
   public readonly size: number;
@@ -25,23 +18,22 @@ export default class DynamicFont implements FontData {
   private readonly advances: Map<number, number> = new Map();
   private readonly css: string;
   private readonly atlas: GlyphAtlas;
+  private readonly kerningTable: KerningTable;
+  private readonly kerningScale: number;
   private fallbackGlyph: Glyph | null = null;
 
-  public static async load(source: DynamicFontSource) {
-    const face = new FontFace(this.family(source.name), `url(${source.url})`);
-    await face.load();
-    document.fonts.add(face);
-  }
-
-  public static family(name: string) {
-    return `aurora-${name}`;
-  }
-
-  constructor(name: string, size: number, atlas: GlyphAtlas) {
+  constructor(
+    name: string,
+    size: number,
+    atlas: GlyphAtlas,
+    kerningTable: KerningTable,
+  ) {
     this.name = name;
     this.size = size;
     this.atlas = atlas;
-    this.css = `${size}px "${DynamicFont.family(name)}"`;
+    this.kerningTable = kerningTable;
+    this.kerningScale = size / KerningTable.referenceSize;
+    this.css = FontCanvas.font(name, size);
 
     const metrics = this.scratch(1, 1).measureText("Hg");
     this.ascender = Math.ceil(metrics.fontBoundingBoxAscent);
@@ -66,6 +58,10 @@ export default class DynamicFont implements FontData {
       this.advances.set(code, advance);
     }
     return advance;
+  }
+
+  public kerning(left: number, right: number) {
+    return this.kerningTable.get(left, right) * this.kerningScale;
   }
 
   public resolve(code: number): Glyph | undefined {
@@ -149,22 +145,6 @@ export default class DynamicFont implements FontData {
   }
 
   private scratch(width: number, height: number) {
-    let canvas = DynamicFont.canvas;
-    if (!canvas) {
-      canvas = DynamicFont.canvas = new OffscreenCanvas(256, 256);
-      DynamicFont.context = canvas.getContext("2d", {
-        willReadFrequently: true,
-      })!;
-    }
-    if (canvas.width < width || canvas.height < height) {
-      canvas.width = Math.max(canvas.width, width);
-      canvas.height = Math.max(canvas.height, height);
-    }
-    const context = DynamicFont.context;
-    context.font = this.css;
-    context.fillStyle = "white";
-    context.textBaseline = "alphabetic";
-    context.textAlign = "left";
-    return context;
+    return FontCanvas.scratch(this.css, width, height);
   }
 }

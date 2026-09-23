@@ -28,6 +28,7 @@ export interface FontData {
   fallback: Glyph;
   resolve?(code: number): Glyph | undefined;
   measure?(code: number): number;
+  kerning?(left: number, right: number): number;
 }
 
 export interface GridFontSource {

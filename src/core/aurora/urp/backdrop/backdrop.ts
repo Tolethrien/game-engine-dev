@@ -11,7 +11,7 @@ export const BACKDROP = Object.freeze({
   // blur sigma of a level in its own texels, must match BACKDROP_SIGMA in drawGuiShader.wgsl
   sigmaPerTexel: 0.8,
   // gaussian reach in sigmas, how far a backdrop sees what lies around it
-  reach: 3,
+  reach: 2,
   // top level texels kept around a region, garbage of earlier groups creeps in from the scissor edge
   margin: 6,
   // occupancy grid cell in canvas pixels
@@ -33,7 +33,6 @@ export interface BackdropRegion extends Bounds {
 export interface BackdropGroup extends BackdropRegion {
   start: number;
 }
-
 // which grid cells hold gui, one bit per cell; never exact, always errs on the safe side
 class CellGrid {
   private words = new Uint32Array(1);

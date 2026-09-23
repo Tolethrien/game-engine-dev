@@ -8,12 +8,11 @@
 ## Assety
 
 - **Fonty**: tablica fontów w `AssetManager` (binding 4 w grupie 1), metryki w `FontData`.
-  - Font domyślny (`"default"`, wbudowany grid) nie jest fallbackiem **znaków** innych fontów — brakujący znak w np. `lato` dalej daje `*` z `lato`, nie literę z fontu domyślnego. Wymagałoby to mieszania metryk dwóch fontów w jednym `TextRun`.
   - **Dynamiczny atlas ma stałą liczbę stron** (`fontAtlas.pages` w configu), po zapełnieniu tylko ostrzeżenie i znak zastępczy. Do zrobienia:
     - Po zapełnieniu `DynamicFont` zapisuje `fallback` pod brakującym kodem, więc szerokość litery zmienia się z prawdziwej (`measure`) na szerokość `*`. `TextBox` zawija po prawdziwej, a układa po zastępczej, więc wyrównanie i wielokropek mogą się lekko rozjechać. Poprawka: zapisywać kopię fallbacku z `advance` z `measure(code)`.
 
   - **Szerokość obrysu tekstu** jest ograniczona zasięgiem pola (`writeGlyph` przycina do `glyph.range × px na teksel − 1`). Szerszy obrys: MTSDF z większym `-pxrange` (np. 24 → 12 tekseli zasięgu), dla masek większy `fontAtlas.spread`. Oba zwiększają margines glifów w atlasie.
-  - **Kerning** w dynamicznym atlasie: brak. Pary z `measureText` z cache'em albo odczyt z TTF.
+  - **Kerning MTSDF** (świat): odłożony, na razie niepotrzebny (fonty dynamic kerning mają, `text/kerning.ts`). Jeśli kiedyś: msdf-atlas-gen czyta tylko tabelę `kern`, a Lato i BlackOps mają pary w `GPOS`. Najtańsza droga: opcjonalny `url` do TTF w `MtsdfFontSource`, `FontCanvas.load` + ta sama `KerningTable`, `fromMTSDF` ustawia `FontData.kerning` (skala `atlas.size / referenceSize`). Alternatywa: `fontgen` (`C:\coding\tools\fontgen`) dopisuje pary z `GPOS` do `json.kerning` przez `opentype.js`.
   - Wszystkie warstwy tablicy mają ten sam rozmiar, więc strony fontów bitmapowych rosną do rozmiaru strony dynamicznej.
 
 - **`devicePixelRatio`**: canvas dostaje rozmiar okna z Electrona, najpewniej w pikselach logicznych. Przy skalowaniu Windowsa (125%, 150%) przeglądarka rozciąga cały obraz i wszystko jest lekko miękkie, także GUI i dynamiczny tekst, które nie będą ostrzejsze niż canvas. Do ustalenia na poziomie silnika: canvas w pikselach fizycznych (`size * devicePixelRatio`), co z `renderRes`, skalą NAVI i współrzędnymi myszy.
@@ -26,8 +25,6 @@ Obecnie jedna, globalna: `Aurora.setCamera` → binding 1 w grupie 0 (position, 
 
 - **Wiele kamer** (minimapa, split screen, podgląd w edytorze): osobny bufor na kamerę i osobny wariant bind groupy grupy 0, pass wybiera kamerę w `resources` (np. `res.camera("minimap")`), system ustawia właściwą grupę 0.
 - **Kamera a render target**: minimapa ma zwykle własną teksturę `fixed`, więc `renderSize` z `Frame` nie pasuje. Rozmiar widoku musi iść razem z kamerą.
-
-- **Obiekt kamery po stronie silnika** (śledzenie, shake, granice mapy, płynny zoom, pixel snapping) budowany w engine, nie w Aurorze. Aurora dostaje tylko gotowe dane raz na klatkę.
 
 - **Kto przekazuje dane**: engine sam pcha aktywne kamery przed `endFrame` czy gra woła `setCamera` ręcznie.
 
@@ -81,9 +78,6 @@ Obecnie jedna, globalna: `Aurora.setCamera` → binding 1 w grupie 0 (position, 
 - Jesli wiem ze w sumie gra glownie u mnie bedzie w swiecie miala sprity! to moze warto by bylo miec wersje draw ktora nie ma zasranego 104 bajty na kazda instancje bo i tka nie uzyje rzeycz jak rounding czy outline (nie dotyczy gui)
   Sprite-only pass (bez rounding/outline) → inny, chudszy MaterialInput niż w draw/gui. To realny powód na podział rejestru materiałów per pass (patrz sekcja „Materiały" wyżej) — w GUI nie ma sensu, bo tam MaterialInput jest identyczny jak w draw.
 
-plan na teraz:
-kerning
-
 ## URP TODO
 
 - hight i normal map
@@ -94,8 +88,11 @@ kerning
   -efekty: bloom, film grain, grayscale, winieta,
 - full screen quad dla wlasnych shaderow
 - build in togglowana kamere podstawowa
-- draw Origin
-- tone mapping
+- draw Origin: topLeft, center
+- tone mappinng: rainhard,aces, filmic,none
+- co z kamera? jak ja robimy
+- on/off ficzery jak bloom,lighting itp
+
 - gui pass pelny: outliny i takie tam... (shadowbox i innershadow sa w `DrawGui.shadow`)
 - **Efekty warstwy GUI** (osobny pass): drop-shadow/glow calego poddrzewa GUI, cien z alfy tekstury sprite'a. Blur tla jest w `DrawGui.backdrop`.
 - **Backdrop: inne filtry** (`brightness`, `contrast`, `saturate`, `hue-rotate`, `invert`, `sepia`) — ta sama gałąź shadera, parametry mieszczą się w wolnych polach instancji (`uvRect`, `outlineWidth`, reszta `params`). Kolejność filtrów byłaby stała, nie jak w CSS.

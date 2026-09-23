@@ -19,13 +19,7 @@ export function createGameWindow() {
   gameWindow.setMenu(null);
   gameWindow.setBackgroundColor("rgba(0,0,0,1)");
   gameWindow.setAspectRatio(16 / 9);
-  gameWindow.webContents.on("before-input-event", (_event, input) => {
-    // key down only, and not held: one press is one toggle
-    if (input.type !== "keyDown" || input.isAutoRepeat) return;
-    if (input.key === "F10") {
-      gameWindow.setFullScreen(!gameWindow.isFullScreen());
-    }
-  });
+
   registerWindowEventsIPC();
   loadRenderer(gameWindow, {
     devServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
@@ -45,6 +39,9 @@ function onDevServer() {
     if (input.control && input.key.toLowerCase() === "r") gameWindow.reload();
     if (input.control && input.shift && input.key.toLowerCase() === "i")
       gameWindow.webContents.toggleDevTools();
+    if (input.key === "F10") {
+      gameWindow.setFullScreen(!gameWindow.isFullScreen());
+    }
   });
   gameWindow.webContents.openDevTools({
     mode: "detach",

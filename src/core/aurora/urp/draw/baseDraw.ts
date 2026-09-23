@@ -299,6 +299,7 @@ export default abstract class BaseDraw<Writer extends InstanceWriter> {
       Font.drawSize(font, props.size),
       props.letterSpacing ?? 0,
       text.run,
+      props.kerning ?? true,
     );
     this.drawRun(text.run, 1, props, z, sort, shadow);
   }

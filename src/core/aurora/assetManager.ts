@@ -7,6 +7,8 @@ import Font, {
   GridFontSource,
 } from "./text/font";
 import DynamicFont from "./text/dynamicFont";
+import FontCanvas from "./text/fontCanvas";
+import KerningTable from "./text/kerning";
 import GlyphAtlas from "./text/glyphAtlas";
 import type { FontAtlasConfig } from "./config";
 import fallbackFontUrl from "./assets/fallbackFont.png";
@@ -85,6 +87,7 @@ export default class AssetManager {
   private static dynamicSources: Map<string, DynamicFontSource> = new Map();
   private static dynamicFonts: Map<string, Map<number, DynamicFont>> =
     new Map();
+  private static kerningTables: Map<string, KerningTable> = new Map();
   declare private static glyphAtlas: GlyphAtlas;
   declare private static defaultFont: FontData;
 
@@ -288,7 +291,7 @@ export default class AssetManager {
     const [images, atlases] = await Promise.all([
       Promise.all(grids.map((source) => this.loadImageData(source.url))),
       Promise.all(mtsdfs.map((source) => this.loadRawBitmap(source.url))),
-      Promise.all(dynamics.map((source) => DynamicFont.load(source))),
+      Promise.all(dynamics.map((source) => FontCanvas.load(source))),
     ]);
 
     // every font lives in the glyph atlas pages, layer 0 stays empty
@@ -340,6 +343,10 @@ export default class AssetManager {
       dynamics.map((source) => [source.name, source]),
     );
     this.dynamicFonts.clear();
+    // one table per family: every size of a dynamic font shares the measured pairs
+    this.kerningTables = new Map(
+      dynamics.map((source) => [source.name, new KerningTable(source.name)]),
+    );
     this.glyphAtlas = glyphAtlas;
     this.defaultFont = fonts.get(DEFAULT_FONT_NAME)!;
     this.fontsVersion++;
@@ -363,7 +370,12 @@ export default class AssetManager {
       if (!sizes) this.dynamicFonts.set(name, (sizes = new Map()));
       let dynamic = sizes.get(pixels);
       if (!dynamic) {
-        dynamic = new DynamicFont(name, pixels, this.glyphAtlas);
+        dynamic = new DynamicFont(
+          name,
+          pixels,
+          this.glyphAtlas,
+          this.kerningTables.get(name)!,
+        );
         sizes.set(pixels, dynamic);
       }
       return dynamic;

@@ -22,6 +22,14 @@ export default class TextLayout {
     return font.measure ? font.measure(code) : font.fallback.advance;
   }
 
+  // pairs touching a space are never kerned, so wrapping and justify keep working on whole words
+  public static kerning(font: FontData, left: number, right: number) {
+    if (!font.kerning || left < 0) return 0;
+    if (left === CHAR.SPACE || left === CHAR.NEWLINE) return 0;
+    if (right === CHAR.SPACE || right === CHAR.NEWLINE) return 0;
+    return font.kerning(left, right);
+  }
+
   public static normalize(text: string) {
     for (let i = 0; i < text.length; i++) {
       if (text.charCodeAt(i) > 0x7f) return text.normalize("NFC");
@@ -49,8 +57,9 @@ export default class TextLayout {
     size: number,
     letterSpacing: number,
     run: TextRun,
+    kerning = true,
   ) {
-    this.walk(font, codes, size, letterSpacing, run, run.size);
+    this.walk(font, codes, size, letterSpacing, kerning, run, run.size);
     return run;
   }
 
@@ -59,6 +68,7 @@ export default class TextLayout {
     text: string,
     size?: number,
     letterSpacing = 0,
+    kerning = true,
   ): Size2D {
     const font = AssetManager.getFont(fontName, size);
     return this.walk(
@@ -66,6 +76,7 @@ export default class TextLayout {
       this.codes(text, this.measureCodes),
       Font.drawSize(font, size),
       letterSpacing,
+      kerning,
       null,
       { width: 0, height: 0 },
     );
@@ -76,6 +87,7 @@ export default class TextLayout {
     codes: readonly number[],
     size: number,
     letterSpacing: number,
+    kerning: boolean,
     run: TextRun | null,
     out: Size2D,
   ) {
@@ -85,6 +97,7 @@ export default class TextLayout {
     let widest = 0;
     let line = 0;
     let lineStart = true;
+    let previous = -1;
     for (let i = 0; i < codes.length; i++) {
       const code = codes[i];
       if (code === CHAR.NEWLINE) {
@@ -92,8 +105,11 @@ export default class TextLayout {
         pen = 0;
         line++;
         lineStart = true;
+        previous = -1;
         continue;
       }
+      if (kerning) pen += this.kerning(font, previous, code) * scale;
+      previous = code;
       if (!lineStart) pen += letterSpacing;
       lineStart = false;
       if (run && code !== CHAR.SPACE) {

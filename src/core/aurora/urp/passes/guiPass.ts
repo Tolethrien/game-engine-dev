@@ -187,12 +187,6 @@ export default class GuiPass extends MultiPass {
     }
     this.drawRange(step, first, count);
     step.end();
-    console.log(
-      "scene",
-      this.backdrops.hasScene,
-      "groups",
-      this.backdrops.getGroupCount,
-    );
   }
 
   private beginStep(

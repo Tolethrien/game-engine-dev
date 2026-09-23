@@ -4,6 +4,7 @@ import { COLOR } from "@axiom/color";
 import BaseDraw, { BoxGeometry, visibleOutline } from "./baseDraw";
 import { GuiShape, InstanceWriter, writeCorners } from "./drawInternal";
 import { DEFAULT_MATERIAL } from "./materials";
+import type { BackdropSource } from "../backdrop/backdrop";
 import type { Bounds } from "@axiom/AABB";
 import type {
   DrawBackdrop,
@@ -37,15 +38,19 @@ export class GuiDraw extends BaseDraw<InstanceWriter> {
   // box effects in order: outer shadows, backdrop, the box itself (tinting the backdrop), inner shadows
   public rect(props: GuiRect) {
     const box = this.rectBox(props);
+    // classified before its own shadow marks the cells under the box, where it is cut out anyway
+    const source = this.classifyBackdrop(props.backdrop, box);
     this.writeShadows(props.shadow, box, props, false);
-    this.writeBackdrop(props.backdrop, box, props);
+    this.writeBackdrop(props.backdrop, box, props, source);
     this.drawBox(box, props, props.color ?? COLOR.WHITE, 0, undefined);
     this.writeShadows(props.shadow, box, props, true);
   }
   public circle(props: GuiCircle) {
     const box = this.circleBox(props);
+    // classified before its own shadow marks the cells under the box, where it is cut out anyway
+    const source = this.classifyBackdrop(props.backdrop, box);
     this.writeShadows(props.shadow, box, props, false);
-    this.writeBackdrop(props.backdrop, box, props);
+    this.writeBackdrop(props.backdrop, box, props, source);
     this.drawBox(box, props, props.color ?? COLOR.WHITE, 0, undefined);
     this.writeShadows(props.shadow, box, props, true);
   }
@@ -59,8 +64,9 @@ export class GuiDraw extends BaseDraw<InstanceWriter> {
   public sprite(props: GuiSprite) {
     const atlas = props.atlas ?? "ui";
     const box = this.spriteBox(props, atlas);
+    const source = this.classifyBackdrop(props.backdrop, box);
     this.writeShadows(props.shadow, box, props, false);
-    this.writeBackdrop(props.backdrop, box, props);
+    this.writeBackdrop(props.backdrop, box, props, source);
     this.drawSprite(box, props, atlas, 0, undefined);
     this.writeShadows(props.shadow, box, props, true);
   }
@@ -148,18 +154,25 @@ export class GuiDraw extends BaseDraw<InstanceWriter> {
     view.params(offsetX, offsetY, spread, boxOutline);
     view.shape(inset ? GuiShape.InnerShadow : GuiShape.Shadow);
   }
+  // which pyramid the backdrop reads, decided before anything of this box is written
+  private classifyBackdrop(
+    backdrop: DrawBackdrop | undefined,
+    box: BoxGeometry,
+  ) {
+    const target = this.target;
+    if (!backdrop || !target || backdrop.blur <= 0) return null;
+    return target.getBackdrops.classify(this.boxBounds(box), backdrop.blur);
+  }
   private writeBackdrop(
     backdrop: DrawBackdrop | undefined,
     box: BoxGeometry,
     style: ShapeStyle,
+    source: BackdropSource | null,
   ) {
     const target = this.target;
-    if (!backdrop || !target || backdrop.blur <= 0) return;
+    if (!backdrop || !target || !source) return;
     const sigma = backdrop.blur;
     const bounds = this.boxBounds(box);
-    // decided before the instance is written: its own mark must not count as gui under it
-    const tracker = target.getBackdrops;
-    const source = tracker.classify(bounds, sigma);
     const view = this.fillShape(
       this.effectOf(style),
       COLOR.WHITE,
@@ -177,7 +190,7 @@ export class GuiDraw extends BaseDraw<InstanceWriter> {
     view.shape(
       source === "scene" ? GuiShape.BackdropScene : GuiShape.Backdrop,
     );
-    tracker.add(source, target.getLastIndex, bounds, sigma);
+    target.getBackdrops.add(source, target.getLastIndex, bounds, sigma);
   }
   // same material keeps the batch, an additive pipeline would add the effect instead
   private effectOf(style: ShapeStyle) {
