@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  --color-window: #11111b;
+  --color-titlebar: #181825;
+  --color-panel: #181825;
+  --color-outline: #54556b;
+  --color-divider: #2c2d40;
+  --color-fg: #d6d8e0;
+  --color-fg-dim: #7f849c;
+  --color-live: #4ade80;
+  --color-stale: #fb593c;
+  --color-warn: #f5c85c;
+  --color-error: #f0616b;
+  --color-scrollbar: #2c2d40;
+  --color-scrollbar-hover: #54556b;
+
+  --text-body: 12px;
+  --text-caption: 10px;
+  --text-value: 15px;
+
+  --spacing-titlebar: 36px;
+  --spacing-panel-head: 24px;
+
+  --radius-panel: 6px;
+
+  --font-mono: "Consolas", "Menlo", monospace;
+}
+
+/* read by grid/grid.tsx to compute the column count */
+:root {
+  --grid-cell: 90px;
+  --grid-gap: 8px;
+}
+
+/* global so every overflow container (tabs, fill blocks, console) matches without extra classes */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-hover);
+  background-clip: content-box;
+}

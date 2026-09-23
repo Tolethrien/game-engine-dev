@@ -1,0 +1,89 @@
+import { For, Show, type Component } from "solid-js";
+import { Dynamic } from "solid-js/web";
+import { useLocalStorage } from "./hooks/useLocalStorage";
+import ConsoleTab from "./tabs/console";
+import Grid from "./grid/grid";
+import type { PanelId } from "./panels/registry";
+import { pinnedPanels } from "./pins";
+
+export type TabId = "custom" | "console" | "aurora";
+
+interface TabDefinition {
+  label: string;
+  component?: Component;
+  panels?: PanelId[] | (() => PanelId[]);
+  empty?: string;
+}
+
+export const TABS: Record<TabId, TabDefinition> = {
+  custom: {
+    label: "Custom",
+    panels: pinnedPanels,
+    empty: "pin a panel from another tab",
+  },
+  console: { label: "Console", component: ConsoleTab },
+  aurora: {
+    label: "Aurora",
+    panels: [
+      "auroraGpu",
+      "auroraPassTimes",
+      "auroraCalls",
+      "auroraGeometry",
+      "auroraCounters",
+      "auroraResources",
+      "auroraMockList",
+    ],
+  },
+};
+
+const TAB_IDS = Object.keys(TABS) as TabId[];
+
+const [storedTab, setActiveTab] = useLocalStorage<string>(
+  "activeTab",
+  TAB_IDS[0],
+);
+
+export const activeTab = (): TabId =>
+  storedTab() in TABS ? (storedTab() as TabId) : TAB_IDS[0];
+
+export { setActiveTab };
+
+export function TabBar() {
+  return (
+    <nav class="flex shrink-0 border-b border-outline bg-titlebar">
+      <For each={TAB_IDS}>
+        {(id) => (
+          <button
+            class="cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-body text-fg-dim hover:text-fg data-[active]:border-live data-[active]:text-fg"
+            data-active={activeTab() === id ? "" : undefined}
+            onClick={() => setActiveTab(id)}
+          >
+            {TABS[id].label}
+          </button>
+        )}
+      </For>
+    </nav>
+  );
+}
+
+export function TabContent() {
+  const tab = () => TABS[activeTab()];
+  return (
+    <Show
+      when={tab().component}
+      fallback={
+        <Grid
+          tabId={activeTab()}
+          panels={
+            typeof tab().panels === "function"
+              ? (tab().panels as () => PanelId[])()
+              : ((tab().panels as PanelId[] | undefined) ?? [])
+          }
+          empty={tab().empty}
+        />
+      }
+    >
+      {(component) => <Dynamic component={component()} />}
+    </Show>
+  );
+}

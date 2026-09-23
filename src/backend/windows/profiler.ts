@@ -4,11 +4,20 @@ import { loadRenderer } from "./loader";
 import { gameWindow } from "./game";
 export let profilerWindow: BrowserWindow | undefined;
 
+// must match --color-titlebar / --spacing-titlebar in src/profiler/profiler.css
+const TITLEBAR = {
+  height: 36,
+  color: "#181825",
+  symbolColor: "#d6d8e0",
+};
+
 export function createProfilerWindow() {
   profilerWindow = new BrowserWindow({
     ...getDockBounds(),
     useContentSize: true,
     resizable: true,
+    titleBarStyle: "hidden",
+    titleBarOverlay: TITLEBAR,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
     },
@@ -57,7 +66,7 @@ export function openProfilerWindow() {
 }
 
 function getDockBounds() {
-  const DOCK_WIDTH_RATIO = 0.3;
+  const DOCK_WIDTH_RATIO = 0.4;
   const { workArea } = screen.getPrimaryDisplay();
   const width = Math.round(workArea.width * DOCK_WIDTH_RATIO);
   return {

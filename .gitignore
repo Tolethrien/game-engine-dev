@@ -97,3 +97,7 @@ dist/
 CLAUDE.md
 **/CLAUDE.md
 plans/
+
+# old versions kept locally
+src/core/auroraOld/
+src/profiler_old/

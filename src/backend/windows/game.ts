@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, app } from "electron";
 import path from "path";
 import { registerWindowEventsIPC } from "../IPC/gameWindow";
 import { loadRenderer } from "./loader";
@@ -35,6 +35,7 @@ export function createGameWindow() {
 }
 function onDevServer() {
   // gameWindow.maximize();
+  gameWindow.on("closed", () => app.quit());
   gameWindow.webContents.on("before-input-event", (_event, input) => {
     if (input.control && input.key.toLowerCase() === "r") gameWindow.reload();
     if (input.control && input.shift && input.key.toLowerCase() === "i")
