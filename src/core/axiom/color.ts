@@ -19,6 +19,15 @@ export default class AxiomColor {
       Math.random() * 255 + 1,
     ];
   }
+  // per channel on the stored values (srgb 0-255), no rounding
+  static lerpRGBA(from: Readonly<RGBA>, to: Readonly<RGBA>, t: number): RGBA {
+    return [
+      from[0] + (to[0] - from[0]) * t,
+      from[1] + (to[1] - from[1]) * t,
+      from[2] + (to[2] - from[2]) * t,
+      from[3] + (to[3] - from[3]) * t,
+    ];
+  }
   static rgbaToHex([r, g, b, a]: RGBA): string {
     const toHex = (n: number) => Math.round(n).toString(16).padStart(2, "0");
     return `#${toHex(r)}${toHex(g)}${toHex(b)}${toHex(a * 255)}`;

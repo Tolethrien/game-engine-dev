@@ -67,11 +67,14 @@ export type DrawAtlas = "world" | "ui";
 // topLeft, topRight, bottomRight, bottomLeft
 export type CornerRadius = number | [number, number, number, number];
 
-export function clearShapeData(view: InstanceWriter) {
+// any writer with a shapeData field: draw instances and lights
+type ShapeDataWriter = Pick<InstanceWriter, "shapeData">;
+
+export function clearShapeData(view: ShapeDataWriter) {
   view.shapeData(0, 0, 0, 0);
 }
 // box: corner radii
-export function writeCorners(view: InstanceWriter, rounded: CornerRadius = 0) {
+export function writeCorners(view: ShapeDataWriter, rounded: CornerRadius = 0) {
   if (typeof rounded === "number") {
     view.shapeData(rounded, rounded, rounded, rounded);
   } else {

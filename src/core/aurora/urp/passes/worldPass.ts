@@ -19,6 +19,7 @@ import FixedBuffer from "../../utils/fixedBuffer";
 import ClipBuffer from "../clip/clipBuffer";
 import { CLIP, materialOf } from "../clip/clip";
 import { assert } from "@axiom/utils";
+import { COLOR } from "@axiom/color";
 interface SorterFrameProps {
   sortAxes: number[];
   frameMinX: number;
@@ -187,6 +188,16 @@ export default class WorldPass extends RenderPass {
       },
       { clear: true, clearValue: Aurora.getSettings.rendering.canvasColor },
     );
+    // share of each pixel drawn by emissive materials, the light composite skips it
+    res.create(
+      "emissive",
+      {
+        format: "r8unorm",
+        size: { scale: 1, base: "render" },
+        label: "emissive",
+      },
+      { clear: true, clearValue: COLOR.TRANSPARENT },
+    );
     res.create(
       "DepthTest",
       {
@@ -260,7 +271,11 @@ export default class WorldPass extends RenderPass {
     sorting: boolean,
   ): Promise<MaterialPipelines> {
     const shader = DrawWorldShader.replace("// MATERIAL", material.fragment);
-    const constants = { linearColors: Aurora.isLinear, depthSort: sorting };
+    const constants = {
+      linearColors: Aurora.isLinear,
+      depthSort: sorting,
+      emissive: material.emissive,
+    };
     const [opaque, transparent] = await Promise.all([
       this.opaqueBatches[material.id]
         ? Aurora.createRenderPipeline(targets, {

@@ -19,6 +19,17 @@ fn outputColor(color: vec3f) -> vec3f {
   return select(high, low, color <= vec3f(0.0031308));
 }
 
+// interleaved gradient noise (Jimenez 2014): 0..1, even spread, no texture needed
+fn gradientNoise(pixel: vec2f) -> f32 {
+  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));
+}
+// triangular noise of +-1 step of the 8 bit canvas: breaks gradient banding in dark
+// light falloffs; triangular hides the noise itself better than a flat one
+fn dither(pixel: vec2f) -> f32 {
+  let noise = gradientNoise(pixel) + gradientNoise(pixel + vec2f(113.0, 71.0)) - 1.0;
+  return noise / 255.0;
+}
+
 @vertex
 fn vertexMain(@builtin(vertex_index) index: u32) -> VertexOut {
   var corners = array<vec2f, 6>(
@@ -43,5 +54,7 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
   }
   // srgb encode is non-linear, so it runs on straight color, the canvas wants premultiplied back
   let straight = min(color.rgb / color.a, vec3f(1.0));
-  return vec4f(outputColor(straight) * color.a, color.a);
+  // after the encode: the noise must be one step of what the canvas stores
+  let encoded = clamp(outputColor(straight) + dither(in.position.xy), vec3f(0.0), vec3f(1.0));
+  return vec4f(encoded * color.a, color.a);
 }

@@ -55,6 +55,8 @@ override linearColors: bool = true;
 override depthSort: bool = false;
 // opaque pipeline: writes depth, so a pixel is either fully kept or dropped
 override opaquePass: bool = false;
+// material ignores the light map, must match Material.emissive
+override emissive: bool = false;
 
 // must match Shape in draw/drawInternal.ts
 const SHAPE_BOX: u32 = 0u;
@@ -82,6 +84,12 @@ struct InstanceIn {
   @location(10) params: vec4f,
   @location(11) materialClip: u32,
   @location(12) sortPoint: vec3f,
+};
+// must match the color targets of WorldPass, in creation order
+struct FragmentOut {
+  @location(0) color: vec4f,
+  // premultiplied like color, so what is drawn over an emissive pixel covers its mask too
+  @location(1) emissive: vec4f,
 };
 struct VertexOut {
   @builtin(position) position: vec4f,
@@ -334,7 +342,7 @@ fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> Vertex
 }
 
 @fragment
-fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
+fn fragmentMain(in: VertexOut) -> FragmentOut {
   let clip = clipCoverage(in.clip, in.clipPoint);
   // opaque writes depth, a pixel mostly cut away must not; discard keeps helpers for derivatives
   if (clip < select(0.0001, 0.5, opaquePass)) {
@@ -445,8 +453,14 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
       discard;
     }
     // color is premultiplied, undo it: opaque writes full alpha, not a darkened edge
-    return vec4f(color.rgb / max(color.a, 0.0001), 1.0);
+    return fragmentOut(vec4f(color.rgb / max(color.a, 0.0001), 1.0));
   }
   // the material paints the shape, coverage cuts it to the antialiased edge
-  return color * coverage * clip;
+  return fragmentOut(color * coverage * clip);
+}
+fn fragmentOut(color: vec4f) -> FragmentOut {
+  var out: FragmentOut;
+  out.color = color;
+  out.emissive = vec4f(select(0.0, color.a, emissive), 0.0, 0.0, color.a);
+  return out;
 }

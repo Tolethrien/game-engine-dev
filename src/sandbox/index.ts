@@ -2,6 +2,7 @@ import Engine from "@engine/engine";
 import FPSOverlay from "@engine/fpsOverlay";
 import Aurora from "@/core/aurora/core";
 import land from "@sandbox/assets/land.png";
+import foliage from "@sandbox/assets/foliage.png";
 import temp from "@sandbox/assets/3.jpg";
 import latoRegular from "@sandbox/assets/fonts/lato/Lato-Regular.ttf";
 import latoBold from "@sandbox/assets/fonts/lato/Lato-Bold.ttf";
@@ -28,15 +29,24 @@ import { quadTest } from "./tests/quad";
 import { sortTest } from "./tests/sort";
 import { staticObjects } from "./tests/staticShapes";
 import { textGuiTest } from "./tests/textGui";
+import { lightsTest } from "./tests/lights";
+import { ledTest, setupLedTest } from "./tests/leds";
+import { postColorTest } from "./tests/postColor";
+import { postEffectsTest } from "./tests/postEffects";
+import { isoWorldTest, setupIsoWorld } from "./tests/isoWorld";
+import { dayNightTest } from "./tests/dayNight";
+import { diffusionTest } from "./tests/diffusion";
+import { screenEffectsTest } from "./tests/screenEffects";
 import { captureTest, setupCaptureTest } from "./tests/captureTest";
 import { setupWatchTest, watchTest } from "./tests/watchTest";
 import { setupWatchLiveTest, watchLiveTest } from "./tests/watchLiveTest";
 import { setupCommandTest } from "./tests/commandTest";
+import ResourcePool from "@/core/aurora/resourcePool";
 async function preload() {
   await Aurora.config({
     rendering: {
       transparentCanvas: false,
-      canvasColor: COLOR.BLACK,
+      canvasColor: COLOR.GRAY,
       renderRes: "1920x1080",
       normalMaps: false,
       heightMaps: false,
@@ -47,6 +57,7 @@ async function preload() {
     userTextures: [
       { name: "land", albedo: land },
       { name: "temp", albedo: temp },
+      { name: "foliage", albedo: foliage },
     ],
     userUI: [{ name: "landUI", url: land }],
     fonts: [
@@ -73,30 +84,53 @@ async function preload() {
   //     zRange: [0, 255],
   //   },
   // });
-  await URP.init({ sortMode: "y+x+z", sortAnchor: "center" });
+
+  await URP.init({
+    sortMode: "y+x+z",
+    sortAnchor: "center",
+    // "none" | "reinhard" | "aces" | "filmic" | "agx"
+    toneMapping: { mode: "none", exposure: 0, look: "none" },
+    // live: Post.setBloom({...}), Post.setExposure(stops)
+    bloom: { enabled: false },
+  });
   FPSOverlay.setVisible(true);
 }
 
 function setup() {
   // setupNaviTest();
-  setupCaptureTest();
-  setupWatchTest();
-  setupWatchLiveTest();
-  setupCommandTest();
+  // setupCaptureTest();
+  // setupWatchTest();
+  // setupWatchLiveTest();
+  // setupCommandTest();
+  // setupLedTest();
+  setupIsoWorld();
 }
 function update() {
   const t = Time.getTimeInSeconds();
-  Draw.sprite({
-    position: { x: 0, y: 0, z: 0 },
-    texture: "temp",
-    tint: COLOR.WHITE,
-  });
+  // background photo for lightsTest, it would cover the black led room
+  // Draw.sprite({
+  //   position: { x: 0, y: 0, z: 0 },
+  //   texture: "temp",
+  //   tint: COLOR.WHITE,
+  // });
+
+  // base scene for the post effects, always on
+  isoWorldTest(t);
+  dayNightTest();
+  diffusionTest();
+  screenEffectsTest();
+
+  // lightsTest(t);
+  // ledTest(t);
+  // postColorTest(t);
+  // postEffectsTest(t);
+
   // clipTest(t);
   // guiTest(t);
   // updateNaviTest();
-  captureTest();
-  watchTest();
-  watchLiveTest();
+  // captureTest();
+  // watchTest();
+  // watchLiveTest();
   // guiBackdropTest(t);
   // guiShadowTest(t);
   // lasersTest(t);

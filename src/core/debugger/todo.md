@@ -65,6 +65,7 @@
 - ustawienia zmieniane w czasie rzeczywistym z poziomu profilera
 - linia w pliku + stack jako opcja (nie każdy log): `Error.captureStackTrace`/`prepareStackTrace` → CallSite, mapowanie sourcemapą w profilerze (`source-map-js`, plik z dev servera), klik otwiera w VS Code
 - dump JSON (pełne snapy obiektów) obok `.txt`
+- wczytywanie dumpów `.txt` z `.MisaLogs/` do konsoli dla lepszej czytelności (kolorowanie, formatowanie jak zwykłe logi) i wyświetlanie ich w osobnym, zespawnowanym panelu
 - prod: main podpina się pod zdarzenia i zapisuje do `.MisaLogs/` wszystko, co szłoby do konsoli
 - bogate logi: tabele, wykresy itp.
 - migracja `console.*` w silniku na `debug.log`

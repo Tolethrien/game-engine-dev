@@ -10,6 +10,8 @@ export interface MaterialOptions<Name extends string> {
   fragment: string;
   blend?: MaterialBlend;
   transparent?: boolean;
+  // not multiplied by the light map: glows at full strength in the dark
+  emissive?: boolean;
   // names with defaults, key order is the slot in the shader: in.params.x, y, z, w
   params?: Record<Name, number>;
 }
@@ -26,6 +28,7 @@ export default class Material<Name extends string = string> {
   public readonly fragment: string;
   public readonly blend: MaterialBlend;
   public readonly transparent: boolean;
+  public readonly emissive: boolean;
   public readonly paramNames: readonly Name[];
   public readonly defaults: MaterialParams;
 
@@ -36,6 +39,7 @@ export default class Material<Name extends string = string> {
       fragment,
       blend = "normal",
       transparent = false,
+      emissive = false,
       params,
     }: MaterialOptions<Name>,
   ) {
@@ -44,6 +48,7 @@ export default class Material<Name extends string = string> {
     this.fragment = fragment;
     this.blend = blend;
     this.transparent = transparent || blend !== "normal";
+    this.emissive = emissive;
     this.paramNames = params ? (Object.keys(params) as Name[]) : [];
     assert(
       this.paramNames.length <= 4,

@@ -21,7 +21,7 @@ import type { RenderPreset } from "./preset";
 
 export interface GraphTexture {
   name: string;
-  kind: "graph" | "temp" | "asset";
+  kind: "graph" | "temp" | "asset" | "reserved";
   format: GPUTextureFormat;
   width: number;
   height: number;
@@ -52,6 +52,7 @@ export default class RenderGraph {
   public static describeResources(): GraphTexture[] {
     const textures: Map<string, GraphTexture> = new Map();
     const assets: Map<AssetName, GraphTexture> = new Map();
+    const reserved: Map<string, GraphTexture> = new Map();
     const use = (texture: GraphTexture | undefined, pass: string) => {
       if (texture && !texture.usedBy.includes(pass)) texture.usedBy.push(pass);
     };
@@ -94,8 +95,26 @@ export default class RenderGraph {
         }
         use(assets.get(name), pass.name);
       }
+      for (const name of declared.reserved) {
+        const texture = ResourcePool.getReserved.get(name)?.texture;
+        if (!texture) continue;
+        if (!reserved.has(name)) {
+          reserved.set(name, {
+            name,
+            kind: "reserved",
+            format: texture.format,
+            width: texture.width,
+            height: texture.height,
+            mips: texture.mipLevelCount,
+            layers: texture.depthOrArrayLayers,
+            createdBy: "reserved",
+            usedBy: [],
+          });
+        }
+        use(reserved.get(name), pass.name);
+      }
     }
-    return [...textures.values(), ...assets.values()];
+    return [...textures.values(), ...assets.values(), ...reserved.values()];
   }
   private static describeTexture(
     name: string,
@@ -541,6 +560,10 @@ export default class RenderGraph {
     }
     for (const write of declared.writes) {
       assert(
+        (write.desc.dimension ?? "2d") === "2d",
+        `Pass "${pass.name}" writes "${write.name}" as ${write.desc.dimension}, graph textures are 2d (reserve a 3d one)`,
+      );
+      assert(
         !declared.reads.includes(write.name) &&
           !declared.modifies.includes(write.name),
         `Pass "${pass.name}" writes "${write.name}" and also reads or modifies it, use only modify() to read and write the same texture`,
@@ -577,6 +600,10 @@ export default class RenderGraph {
           !declared.modifies.includes(temp.name) &&
           !declared.writes.some((write) => write.name === temp.name),
         `Pass "${pass.name}" declares temp "${temp.name}" with a name already used in this pass`,
+      );
+      assert(
+        (temp.desc.dimension ?? "2d") === "2d",
+        `Pass "${pass.name}" declares temp "${temp.name}" as ${temp.desc.dimension}, graph textures are 2d (reserve a 3d one)`,
       );
       assert(
         !DEPTH_FORMATS.has(temp.desc.format) || (temp.desc.mips ?? 1) === 1,

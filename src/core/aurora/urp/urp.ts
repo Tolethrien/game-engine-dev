@@ -4,6 +4,14 @@ import { RenderPreset } from "../preset";
 import ScreenPas from "./passes/screenPass";
 import WorldPass from "./passes/worldPass";
 import GuiPass from "./passes/guiPass";
+import LightPass from "./passes/lightPass";
+import LightCompositePass from "./passes/lightCompositePass";
+import PostPass from "./passes/postPass";
+import EffectPass from "./passes/effectPass";
+import BloomPass from "./passes/bloomPass";
+import DiffusionPass from "./passes/diffusionPass";
+import { BLOOM_DEFAULTS, postDraw } from "./draw/drawPost";
+import type { AgxLook, BloomProps, ToneMapMode } from "./draw/drawTypes";
 export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z";
 export type SortAnchor = "top" | "center" | "bottom";
 
@@ -13,12 +21,27 @@ export interface SortProps {
   zRange: [number, number];
   step: { x: number; y: number; z: number };
 }
-export interface URPProps extends SortProps {}
+export interface ToneMapProps {
+  // "none" by default: every curve darkens a scene drawn as ldr, turn it on knowingly;
+  // start value, Post.setToneMapping changes it live
+  mode: ToneMapMode;
+  // stops: the scene is scaled by 2^exposure before the curve; start value, Post.setExposure changes it live
+  exposure: number;
+  // start value, Post.setAgxLook changes it live; only for mode "agx"
+  look: AgxLook;
+}
+export interface URPProps extends SortProps {
+  toneMapping: ToneMapProps;
+  // start values, Post.setBloom changes them live
+  bloom: BloomProps;
+}
 const BASE_CONFIG: URPProps = {
   sortMode: "none",
   sortAnchor: "center",
   step: { x: 1, y: 1, z: 1 },
   zRange: [0, 255],
+  toneMapping: { mode: "none", exposure: 0, look: "none" },
+  bloom: { ...BLOOM_DEFAULTS },
 };
 export default class URP extends RenderPreset<URPProps> {
   readonly name = "URP";
@@ -26,16 +49,33 @@ export default class URP extends RenderPreset<URPProps> {
   public static async init(props: DeepPartial<URPProps> = {}) {
     const base = structuredClone(BASE_CONFIG);
     const config = deepMerge(base, props);
+    postDraw.setBloom(config.bloom);
+    postDraw.setToneMapping(config.toneMapping.mode);
+    postDraw.setExposure(config.toneMapping.exposure);
+    postDraw.setAgxLook(config.toneMapping.look);
     await RenderGraph.setPreset(new URP(config));
   }
 
   passes() {
-    return [new WorldPass(this.config), new GuiPass(), new ScreenPas()];
+    return [
+      new WorldPass(this.config),
+      new LightPass(),
+      new EffectPass("world"),
+      new LightCompositePass(),
+      new BloomPass(),
+      new DiffusionPass(),
+      new EffectPass("hdr"),
+      new PostPass(),
+      new EffectPass("screen"),
+      new GuiPass(),
+      new ScreenPas(),
+    ];
   }
   info() {
     return {
       "opaque path":
         this.config.sortMode === "none" ? "off (sortMode none)" : "on",
+      "tone mapping": postDraw.getToneMapping,
     };
   }
 }

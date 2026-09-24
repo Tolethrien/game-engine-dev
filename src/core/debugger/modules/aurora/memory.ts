@@ -66,6 +66,7 @@ const TEXTURE_GROUPS = [
   ["render|", "pool render"],
   ["canvas|", "pool canvas"],
   ["fixed|", "pool fixed"],
+  ["reserved|", "reserved"],
 ] as const;
 
 export class MemoryTracker {

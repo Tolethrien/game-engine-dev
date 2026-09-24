@@ -1,0 +1,8 @@
+{
+    "oak_tree":{"sheet":"foliage","crop":{"x":0,"y":0,"width":117,"height":153},"offset":{"x":4,"y":7}},
+    "oak_tree_leaf_spring":{"sheet":"foliage","crop":{"x":132,"y":0,"width":130,"height":119},"offset":{"x":4,"y":-28}},
+    "oak_tree_leaf_fall":{"sheet":"foliage","crop":{"x":264,"y":0,"width":130,"height":119},"offset":{"x":4,"y":-28}},
+    "flower_orange":{"sheet":"foliage","crop":{"x":176,"y":132,"width":44,"height":44},"offset":{"x":4,"y":17}},
+    "bush_purple":{"sheet":"foliage","crop":{"x":220,"y":132,"width":44,"height":44},"offset":{"x":0,"y":12}},
+    "mushrooms":{"sheet":"foliage","crop":{"x":132,"y":132,"width":44,"height":44},"offset":{"x":0,"y":12}}
+}

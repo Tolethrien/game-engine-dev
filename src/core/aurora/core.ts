@@ -310,11 +310,17 @@ export default class Aurora {
     });
   }
 
-  public static dispatch(encoder: GPUComputePassEncoder, size: Size2D) {
+  // groups are groupSize x groupSize x 1, so depth counts whole slices
+  public static dispatch(
+    encoder: GPUComputePassEncoder,
+    size: Size2D,
+    depth = 1,
+  ) {
     const groupSize = this.settings.rendering.computeGroupSize;
     encoder.dispatchWorkgroups(
       Math.ceil(size.width / groupSize),
       Math.ceil(size.height / groupSize),
+      depth,
     );
   }
 }

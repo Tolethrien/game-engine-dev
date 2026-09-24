@@ -53,6 +53,16 @@ export default class Blend {
     alpha: { srcFactor: "zero", dstFactor: "one", operation: "add" },
   };
 
+  // lerp(target, source, constant), the pass sets it with setBlendConstant
+  public static readonly lerpConstant: GPUBlendState = {
+    color: {
+      srcFactor: "constant",
+      dstFactor: "one-minus-constant",
+      operation: "add",
+    },
+    alpha: { srcFactor: "zero", dstFactor: "one", operation: "add" },
+  };
+
   public static readonly screen: GPUBlendState = {
     color: { srcFactor: "one", dstFactor: "one-minus-src", operation: "add" },
     alpha: {

@@ -83,15 +83,40 @@ Obecnie jedna, globalna: `Aurora.setCamera` → binding 1 w grupie 0 (position, 
 - hight i normal map
 - point lights(oraz wlasne shapy swiatla)
 - dynamiczne oswietlenie
-- LUTy
-- colorCorrectionPass(tylko do zabawy scena w devie, potem do przeniesienia ustaiwenia na LUT)
-  -efekty: bloom, film grain, grayscale, winieta,
-- full screen quad dla wlasnych shaderow
+- LUTy (odłożone, najpierw efekty post niżej; pomysł: korekcja kolorów wypiekana compute'em do `texture_3d` 32³ przy zmianie, LUT z pliku jako pasek PNG, zrzut wypieczonego LUT-a z devu)
+
+### Efekty post (ustalone, robimy w transzach)
+
+Wszystko **tylko na scenę** (przed GUI, renderRes). Efekty na GUI / cały ekran (fade, CRT, pixelate przejść) — wrócimy później.
+
+**Transza 1: `PostPass` [zrobione]** — zastąpił `ToneMapPass`, jeden pełnoekranowy quad zamiast passa per efekt (każdy pass to pełny odczyt i zapis `rgba16float`). Krzywa + korekcja kolorów wypiekane do LUT-a 3D (zrobione), efekty to flagi i parametry w uniformie (włączanie z gry bez rebuildu). `enabled()` = cokolwiek nieneutralne. Stan w `PostDraw`, domyślnie neutralny.
+- Podstawowe opcje obrazu, każda sterowana wartością: `brightness`, `contrast`, `saturation` (0 = grayscale, >1 dozwolone), `temperature`, `tint`, `hueShift`, `colorFilter`.
+- Efekty:
+  - **chroma** (aberracja chromatyczna): `intensity`, `center?`, rozjazd R/B rośnie ku krawędziom,
+  - **sepia**: `amount` 0..1,
+  - **invert**: `amount` 0..1 (płynnie),
+  - **posterize**: `levels` (0 = wył.), liczony na zakodowanym sRGB, inaczej ciemne tony zlewają się w jeden poziom,
+  - **vignette**: `intensity`, `smoothness`, `roundness` (1 = okrąg niezależnie od proporcji), `center`, `color`,
+  - **film grain**: `intensity`, `response` (słabnie w jasnych), `size`, animowany przez `frame`,
+  - **flash**: `color`, `amount`; `Post.flash(color, duration)` z samoczynnym wygaszaniem + ręczne ustawianie stanu,
+  - **radial / zoom blur**: `center`, `strength`, `samples`.
+- Kolejność w shaderze: odczyt (radial blur + chroma, kilka próbek) → exposure → krzywa → kolory → sepia → invert → posterize → vignette → flash → grain (na końcu, żeby ziarno nie szło przez posterize/invert).
+
+**Transza 2: `DiffusionPass` [zrobione]** — efekt „po deszczu” (Orton / filtr Pro-Mist): wszystko lekko poświecone, rozmyte, kolory zamglone.
+- Osobna, płytsza piramida (4–5 mipów), kod jak w bloomie (downsample 13-tap, upsample tent), ale **bez progu** i kompozycja przez `mix` (zmiękcza, nie rozjaśnia) zamiast dodawania. Bloomu nie da się współdzielić — jego piramida jest po progu.
+- W HDR przed tone mappingiem, obok bloomu.
+- Parametry: `amount`, `radius` (liczba poziomów), `haze` (podniesienie czerni), `hazeColor`.
+
+**Transza 3: efekty z shadera + mgła [odłożone — zależne od gry, robione razem z projektem]**
+- Mechanizm: gra rejestruje własny efekt pełnoekranowy jak materiał (`fn effect(in: EffectInput) -> vec4f`; wejście: kolor sceny, `uv`, pozycja w świecie przez kamerę, `lightMap`, czas, `params`). Dodanie/zdjęcie = rebuild. Na `FullScreenQuad`.
+- **Mgła** wbudowana, napisana na tym mechanizmie: fbm we współrzędnych świata (trzyma się świata, `parallax`), `color`, `density`, `scale`, `speed` (wiatr), opcjonalny gradient pionowy.
+- **Mgła oświetlana**: przed `LightCompositePass`, mnożona przez `lightMap` — świeci przy lampach, znika w ciemności.
 - build in togglowana kamere podstawowa
 - draw Origin: topLeft, center
-- tone mappinng: rainhard,aces, filmic,none
 - co z kamera? jak ja robimy
-- on/off ficzery jak bloom,lighting itp
+- on/off ficzery jak lighting itp (bloom ma już `Post.setBloom({ enabled })`)
+- **Bloom: kształt obwódki** — rozwiązane tone mapperem, nie bloomem: ACES ma „stopkę”, która zgniata słaby ogon poświaty w czerń (wygląda jak twarde odcięcie), AgX z `look: "none"` pracuje w logu i wyciąga cienie, więc ta sama poświata gaśnie miękko (test LED w `sandbox/tests/leds.ts`). Próbowane i odrzucone w bloomie: miks zamiast dodawania, `softness` = poziom startowy poświaty. Jeśli kiedyś potrzebna miękka obwódka pod ACES: osobny efekt glow (separowalny gauss o zadanej szerokości w px).
+- **Mapa emisji**: tekstura emisji jako asset (świecą tylko wybrane piksele sprite'a, np. okna budynku), dziś emissive jest binarne per materiał (`EMISSIVE_MATERIAL`) — obiekt świeci cały albo wcale.
 
 - gui pass pelny: outliny i takie tam... (shadowbox i innershadow sa w `DrawGui.shadow`)
 - **Efekty warstwy GUI** (osobny pass): drop-shadow/glow calego poddrzewa GUI, cien z alfy tekstury sprite'a. Blur tla jest w `DrawGui.backdrop`.

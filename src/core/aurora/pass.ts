@@ -102,6 +102,7 @@ export class PassResources {
   public temps: TextureTemp[] = [];
   public unclearedModifies: Set<string> = new Set();
   public assets: AssetName[] = [];
+  public reserved: string[] = [];
   public samplerName: SamplerName = "nearestClamp";
   private readonly passName: string;
   private readonly created: ReadonlyMap<string, { desc: TextureDescriptor }>;
@@ -116,6 +117,11 @@ export class PassResources {
 
   public readAsset(name: AssetName) {
     this.assets.push(name);
+  }
+  // a texture from ResourcePool.reserve: always available, so it never drops the pass;
+  // its owner writes it outside the graph, an owner later in the preset means last frame's content
+  public readReserved(name: string) {
+    this.reserved.push(name);
   }
   public writeCanvas({ loadOp, clearValue }: CanvasWriteOptions) {
     this.canvas = {
@@ -251,6 +257,13 @@ export class PassContext {
   }
   public clearOutputs() {
     this.outputs.clear();
+  }
+  public reserved(name: string, mip?: number) {
+    assert(
+      this.declared.reserved.includes(name),
+      `Pass reads reserved "${name}" without declaring readReserved() in resources()`,
+    );
+    return ResourcePool.reservedView(name, mip);
   }
   public asset(name: AssetName) {
     assert(
