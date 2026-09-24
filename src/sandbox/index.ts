@@ -28,6 +28,10 @@ import { quadTest } from "./tests/quad";
 import { sortTest } from "./tests/sort";
 import { staticObjects } from "./tests/staticShapes";
 import { textGuiTest } from "./tests/textGui";
+import { captureTest, setupCaptureTest } from "./tests/captureTest";
+import { setupWatchTest, watchTest } from "./tests/watchTest";
+import { setupWatchLiveTest, watchLiveTest } from "./tests/watchLiveTest";
+import { setupCommandTest } from "./tests/commandTest";
 async function preload() {
   await Aurora.config({
     rendering: {
@@ -74,7 +78,11 @@ async function preload() {
 }
 
 function setup() {
-  setupNaviTest();
+  // setupNaviTest();
+  setupCaptureTest();
+  setupWatchTest();
+  setupWatchLiveTest();
+  setupCommandTest();
 }
 function update() {
   const t = Time.getTimeInSeconds();
@@ -85,7 +93,10 @@ function update() {
   });
   // clipTest(t);
   // guiTest(t);
-  updateNaviTest();
+  // updateNaviTest();
+  captureTest();
+  watchTest();
+  watchLiveTest();
   // guiBackdropTest(t);
   // guiShadowTest(t);
   // lasersTest(t);

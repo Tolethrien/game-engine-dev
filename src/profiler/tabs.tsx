@@ -3,11 +3,12 @@ import { Dynamic } from "solid-js/web";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import ConsoleTab from "./tabs/console";
 import Grid from "./grid/grid";
-import type { PanelId } from "./panels/registry";
-import { pinnedPanels } from "./pins";
+import { watchPanelId, type PanelId } from "./panels/registry";
+import { watchStore } from "./watch/store";
+import CustomTab from "./tabs/custom";
 import OptionsMenu from "./components/optionsMenu";
 
-export type TabId = "custom" | "console" | "aurora";
+export type TabId = "custom" | "console" | "watch" | "aurora";
 
 interface TabDefinition {
   label: string;
@@ -17,12 +18,13 @@ interface TabDefinition {
 }
 
 export const TABS: Record<TabId, TabDefinition> = {
-  custom: {
-    label: "Custom",
-    panels: pinnedPanels,
-    empty: "pin a panel from another tab",
-  },
+  custom: { label: "Custom", component: CustomTab },
   console: { label: "Console", component: ConsoleTab },
+  watch: {
+    label: "Watch",
+    panels: () => watchStore.names().map(watchPanelId),
+    empty: "no watches, register one with debug.watch.add(...)",
+  },
   aurora: {
     label: "Aurora",
     panels: [

@@ -14,6 +14,14 @@ import { Tween, Tweens } from "@/core/navi/tween";
 import Easing from "@axiom/easing";
 import Time from "@engine/time";
 import UIInput from "@/core/navi/elements/input";
+import { debug } from "@debug";
+import {
+  CONSOLE_SCENARIOS,
+  consoleFrameLogs,
+  consoleStartupLogs,
+} from "./consoleLogs";
+
+const naviLog = debug.log.scope("navi");
 
 const RAINBOW_MATERIAL = Material.create({
   name: "navi-test-rainbow",
@@ -82,10 +90,13 @@ export function setupNaviTest() {
   // bars
   buildBars(470, 700);
   buildInput(470, 920);
+  buildConsole(960, 800);
   buildCatcher();
+  consoleStartupLogs();
 }
 
 export function updateNaviTest() {
+  consoleFrameLogs(barFill);
   if (Navi.didScroll) {
     closeMenu();
     return;
@@ -116,7 +127,7 @@ export function updateNaviTest() {
   if (openSlot?.menu) {
     if (left.parent === openSlot.menu) {
       lastClick = `${MENU_ITEMS[left.indexInParent]} → slot ${openSlot.index}`;
-      console.log(lastClick);
+      naviLog.log(lastClick);
     }
     closeMenu();
     return;
@@ -126,7 +137,7 @@ export function updateNaviTest() {
     lastClick = left.doubleClicked
       ? `DWUKLIK slot ${left.index}`
       : `klik slot ${left.index}`;
-    console.log(lastClick);
+    naviLog.log(lastClick);
   }
 }
 
@@ -1401,7 +1412,7 @@ function buildInput(x: number, y: number) {
         padding: { top: 6, right: 8, bottom: 6, left: 8 },
       },
       states: { focused: { backgroundColor: [36, 42, 58, 255] } },
-      onSubmit: (v) => console.log("zatwierdzono:", v),
+      onSubmit: (value) => naviLog.success("zatwierdzono:", value),
     }),
     root,
   );
@@ -1413,4 +1424,58 @@ function buildInput(x: number, y: number) {
     }),
     root,
   );
+}
+
+function buildConsole(x: number, y: number) {
+  const root = section("konsola — kliknij i patrz w profiler", x, y);
+
+  const pad = Navi.append(
+    new UINode({
+      size: { width: auto(), height: auto() },
+      style: {
+        backgroundColor: [0, 0, 0, 0],
+        layout: "grid",
+        direction: "row",
+        gridCount: 4,
+        gap: 4,
+        gapCross: 4,
+        cellAlignX: "stretch",
+        cellAlignY: "stretch",
+      },
+    }),
+    root,
+  );
+
+  for (const [label, action] of CONSOLE_SCENARIOS) {
+    const node = Navi.append(
+      new UINode({
+        size: { width: auto(), height: auto() },
+        input: "absorb",
+        style: {
+          backgroundColor: [55, 55, 75, 255],
+          rounded: 8,
+          transitionMs: 90,
+          layout: "stack",
+          alignMain: "center",
+          alignCross: "center",
+          padding: { top: 7, right: 10, bottom: 7, left: 10 },
+        },
+        states: {
+          hovered: { backgroundColor: [95, 95, 130, 255] },
+          pressed: { backgroundColor: [40, 40, 55, 255], transitionMs: 0 },
+        },
+      }),
+      pad,
+    );
+
+    Navi.append(
+      new UIText(() => label, {
+        size: { width: auto(), height: auto() },
+        style: { textColor: [255, 255, 255, 255], textSize: 12 },
+      }),
+      node,
+    );
+
+    actions.set(node, action);
+  }
 }

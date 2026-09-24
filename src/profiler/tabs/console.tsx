@@ -1,39 +1,43 @@
-import { For, createEffect, createSignal } from "solid-js";
-import { LEVEL_CLASS, lines } from "../console/store";
+import { Show, createMemo } from "solid-js";
+import VirtualList from "../blocks/virtualList";
+import { flattenRows } from "../console/flatten";
+import ConsoleRowView from "../console/row";
+import ConsoleToolbar from "../console/toolbar";
+import {
+  CONSOLE,
+  expanded,
+  filterEntries,
+  getEntries,
+  query,
+  toast,
+} from "../console/store";
 
 export default function ConsoleTab() {
-  let viewport: HTMLDivElement | undefined;
-  const [stuckToBottom, setStuckToBottom] = createSignal(true);
-
-  createEffect(() => {
-    lines();
-    if (!stuckToBottom() || !viewport) return;
-    viewport.scrollTop = viewport.scrollHeight;
-  });
-
-  const onScroll = () => {
-    if (!viewport) return;
-    const distance =
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    setStuckToBottom(distance < 8);
-  };
+  const filtered = createMemo(() => filterEntries());
+  const rows = createMemo(() => flattenRows(filtered(), expanded()));
 
   return (
-    <div
-      ref={viewport}
-      onScroll={onScroll}
-      class="h-full overflow-y-auto px-3 py-2 text-body leading-[1.45]"
-    >
-      <For each={lines()}>
-        {(line) => (
-          <div class="flex gap-2">
-            <span class="shrink-0 tabular-nums text-fg-dim">{line.time}</span>
-            <span class={`min-w-0 break-words ${LEVEL_CLASS[line.level]}`}>
-              {line.text}
-            </span>
-          </div>
-        )}
-      </For>
+    <div class="flex h-full flex-col">
+      <ConsoleToolbar />
+      <div class="min-h-0 flex-1">
+        <VirtualList count={rows().length} rowHeight={CONSOLE.rowHeight}>
+          {(index) => (
+            <Show when={rows()[index]}>
+              {(row) => <ConsoleRowView row={row()} query={query().trim()} />}
+            </Show>
+          )}
+        </VirtualList>
+      </div>
+      <div class="flex justify-between border-t border-outline bg-titlebar px-2 text-caption text-fg-dim">
+        <span class="tabular-nums">
+          <Show when={filtered().length !== getEntries().length}>
+            {filtered().length.toLocaleString()} shown ·{" "}
+          </Show>
+          {getEntries().length.toLocaleString()} /{" "}
+          {CONSOLE.maxEntries.toLocaleString()}
+        </span>
+        <span>{toast()}</span>
+      </div>
     </div>
   );
 }

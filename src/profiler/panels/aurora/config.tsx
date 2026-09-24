@@ -1,20 +1,10 @@
-import { Index, Show } from "solid-js";
+import { Show } from "solid-js";
 import type { KeyValueItem } from "../../blocks/keyValue";
-import Table, { type TableColumn } from "../../blocks/table";
+import Sections, { type Section } from "../../blocks/sections";
 import { Block, Cols } from "../../grid/layout";
 import { auroraStore } from "../../aurora/store";
 import { formatBytes } from "../../format";
-
-interface Section {
-  title: string;
-  items?: KeyValueItem[];
-  table?: { columns: TableColumn[]; rows: string[][] };
-}
-
-const OPTION_COLUMNS: TableColumn[] = [
-  { label: "Option", width: "max-content" },
-  { label: "Value" },
-];
+import type { AuroraState } from "@/core/debugger/modules/aurora/report";
 
 const size = ({ width, height }: Size2D) => `${width}×${height}`;
 
@@ -94,53 +84,7 @@ function rightSections({ config }: AuroraState): Section[] {
         rows: config.fonts.map((font) => [font.name, font.type]),
       },
     },
-    {
-      title: `Passes (${config.passes.length})`,
-      table: {
-        columns: [{ label: "#", width: "auto" }, { label: "Pass" }],
-        rows: config.passes.map((name, index) => [String(index), name]),
-      },
-    },
-    {
-      title: `Materials (${config.materials.length})`,
-      table: {
-        columns: [{ label: "Id", width: "auto" }, { label: "Name" }],
-        rows: config.materials.map((name, id) => [String(id), name]),
-      },
-    },
   ];
-}
-
-// Index keeps the DOM across state updates, so text stays selectable
-function Sections(props: { sections: Section[] }) {
-  return (
-    <Index each={props.sections}>
-      {(section, index) => (
-        <>
-          <div
-            class="text-caption uppercase tracking-[0.1em] text-fg-dim"
-            classList={{ "mt-2": index > 0 }}
-          >
-            {section().title}
-          </div>
-          <Show when={section().items}>
-            {(items) => (
-              <Table
-                columns={OPTION_COLUMNS}
-                rows={items().map((item) => [item.key, item.value])}
-                cellColor={(row, column) =>
-                  column === 1 ? items()[row]?.color : undefined
-                }
-              />
-            )}
-          </Show>
-          <Show when={section().table}>
-            {(table) => <Table columns={table().columns} rows={table().rows} />}
-          </Show>
-        </>
-      )}
-    </Index>
-  );
 }
 
 export default function AuroraConfigPanel() {

@@ -2,6 +2,7 @@ import { BrowserWindow, screen } from "electron";
 import path from "path";
 import { loadRenderer } from "./loader";
 import { gameWindow } from "./game";
+import { clearWatchVisible } from "../IPC/watch";
 export let profilerWindow: BrowserWindow | undefined;
 
 // must match --color-titlebar / --spacing-titlebar in src/profiler/profiler.css
@@ -34,6 +35,7 @@ export function createProfilerWindow() {
   profilerWindow.on("closed", () => {
     profilerWindow = undefined;
     sendToGame("debug:profilerState", false);
+    clearWatchVisible();
   });
 }
 function onDevServer() {

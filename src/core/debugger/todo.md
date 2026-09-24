@@ -55,8 +55,23 @@
 
 ## konsola profilera
 
-- własne komendy set/get do wartości w grze
+- zrobione: `plans/console-transport.md`, `plans/console-ui.md`, `plans/console-capture.md` (przechwytywanie błędów, lustro do devtools `CAPTURE.mirrorToDevtools`, test: `src/sandbox/tests/captureTest.ts`)
+- przełączyć `CAPTURE.mirrorToDevtools` na `false`, gdy konsola sprawdzi się w codziennej pracy
+- komendy (`set`/`get`, wywołania, podpowiedzi, furtka `>`, kłódki watchy): zrobione wg `plans/console-commands.md`, test: `src/sandbox/tests/commandTest.ts`
+- operatory i wyrażenia (`+= ++ !`, arytmetyka, porównania, wywołania w wyrażeniach): zrobione wg `plans/console-operators.md`
+- kolorowanie wartości: zrobione wg `plans/value-colors.md`
+- podpowiedzi dla indeksów tablic / kluczy Map: zrobione wg `plans/index-*.md`; podpowiedzi w trybie `>`: zrobione wg `plans/raw-completion.md` (doładowania okna przy przewijaniu nie robimy)
+- ctrl+klik w pole watcha wstawia jego ścieżkę do pola komend: zrobione wg `plans/watch-insert-path.md`
 - ustawienia zmieniane w czasie rzeczywistym z poziomu profilera
+- linia w pliku + stack jako opcja (nie każdy log): `Error.captureStackTrace`/`prepareStackTrace` → CallSite, mapowanie sourcemapą w profilerze (`source-map-js`, plik z dev servera), klik otwiera w VS Code
+- dump JSON (pełne snapy obiektów) obok `.txt`
+- prod: main podpina się pod zdarzenia i zapisuje do `.MisaLogs/` wszystko, co szłoby do konsoli
+- bogate logi: tabele, wykresy itp.
+- migracja `console.*` w silniku na `debug.log`
+
+## watch
+
+- zrobione wg `plans/watch.md`; zostaje wykres wartości w czasie i agregaty (sekcja „probe / watch” wyżej)
 
 ## asset tracker
 
@@ -73,6 +88,7 @@
 - lista dźwięków aktualnie granych
 - kategorie dźwięków i ich obecne poziomy głośności
 - logowanie zdarzeń związanych z cello
+- zmiany stanu `AudioContext` (`statechange`: suspended/running/interrupted/closed) do konsoli; Web Audio nie ma globalnego zdarzenia błędów, dziś łapiemy tylko odrzucenia (`decodeAudioData`) przez `unhandledrejection`
 
 ## navi debug (UI tree)
 

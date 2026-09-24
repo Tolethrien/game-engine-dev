@@ -1,5 +1,9 @@
 import type { Pass } from "@/core/aurora/pass";
-import { AuroraDebugData, IAuroraModule } from "../../interfaces";
+import type {
+  AuroraDebugData,
+  IAuroraModule,
+  ILogHandle,
+} from "../../interfaces";
 import { profilerState } from "../../profilerState";
 import { AURORA_REPORT, METRIC_KEYS, statKey } from "./keys";
 import { SeriesBuffer } from "./seriesBuffer";
@@ -7,6 +11,14 @@ import { GpuTree } from "./gpuTree";
 import { GpuTimeline } from "./timeline";
 import { EncoderStats } from "./encoderStats";
 import { MemoryTracker, textureBytes } from "./memory";
+import type { DebugEvent, GpuInfo } from "../../report";
+import type {
+  AuroraAdapter,
+  AuroraConfigState,
+  AuroraPresetState,
+  AuroraReport,
+  AuroraState,
+} from "./report";
 
 type AuroraEventType = "gpu" | "lost" | "shader";
 
@@ -18,7 +30,7 @@ export class AuroraDevModule implements IAuroraModule {
   private gpuTree = new GpuTree();
   private timeline = new GpuTimeline();
   private encoder = new EncoderStats();
-  private memory = new MemoryTracker();
+  private memory: MemoryTracker;
   private events: DebugEvent[] = [];
   private eventIndex: Map<string, DebugEvent> = new Map();
   private changedEvents: Set<DebugEvent> = new Set();
@@ -37,7 +49,8 @@ export class AuroraDevModule implements IAuroraModule {
   private gpuInfo: GpuInfo | null = null;
   private adapter: AuroraAdapter | null = null;
 
-  constructor() {
+  constructor(private readonly log: ILogHandle) {
+    this.memory = new MemoryTracker(log);
     window.API.DEBUG.getGpuInfo().then((info) => (this.gpuInfo = info));
   }
 
@@ -62,14 +75,14 @@ export class AuroraDevModule implements IAuroraModule {
     device.lost.then((info) => {
       if (info.reason === "destroyed") return;
       this.recordEvent("lost", "error", info.message);
-      console.error(`[Aurora] GPU device lost: ${info.message}`);
+      this.log.error(`device lost: ${info.message}`);
     });
 
     device.addEventListener("uncapturederror", (event) => {
       event.preventDefault();
       const message = event.error.message;
       if (this.recordEvent("gpu", "error", message) > 1) return;
-      console.error(`[Aurora] WebGPU error (reported once):\n${message}`);
+      this.log.error(`WebGPU error (reported once):\n${message}`);
     });
   }
   public watchShader(label: string, module: GPUShaderModule, code: string) {
@@ -82,11 +95,11 @@ export class AuroraDevModule implements IAuroraModule {
         const text = `[${label}] ${msg.type} at ${msg.lineNum}:${msg.linePos}: ${msg.message}\n${line}\n${caret}`;
         if (msg.type === "error") {
           this.recordEvent("shader", "error", text);
-          console.error(text);
+          this.log.error(text);
         } else if (msg.type === "warning") {
           this.recordEvent("shader", "warning", text);
-          console.warn(text);
-        } else console.info(text);
+          this.log.warn(text);
+        } else this.log.log(text);
       }
     });
   }
@@ -238,6 +251,7 @@ export class AuroraDevModule implements IAuroraModule {
           texture.height,
           texture.layers,
           texture.mips,
+          this.log,
         ),
       })),
       gpu: { adapter: this.adapter, devices: this.gpuInfo?.gpuDevice ?? [] },
@@ -262,8 +276,6 @@ export class AuroraDevModule implements IAuroraModule {
       uiTextures: settings.userUI.length,
       fonts: settings.fonts.map(({ name, type }) => ({ name, type })),
       fontAtlas: { ...settings.fontAtlas },
-      passes: data.activePasses.map((pass) => pass.name),
-      materials: data.materials().map((material) => material.name),
     };
   }
 
@@ -274,6 +286,8 @@ export class AuroraDevModule implements IAuroraModule {
       name: preset.name,
       config: flatten(preset.getConfig),
       info: preset.info?.() ?? {},
+      passes: data.activePasses.map((pass) => pass.name),
+      materials: data.materials().map((material) => material.name),
     };
   }
 

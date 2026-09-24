@@ -1,4 +1,5 @@
 import type { GpuSteps } from "@/core/aurora/timer";
+import type { GpuTimelineFrame } from "./report";
 
 // keeps the slowest frame since the last take, the last frame of an interval almost never holds the spike
 export class GpuTimeline {

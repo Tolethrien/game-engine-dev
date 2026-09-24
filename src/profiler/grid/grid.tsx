@@ -2,7 +2,7 @@ import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-j
 import AxiomMath from "@/core/axiom/math";
 import Panel from "./panel";
 import LayoutBar from "./layoutBar";
-import { PANELS, panelTitle, type PanelId } from "../panels/registry";
+import { panelDefinition, panelTitle, type PanelId } from "../panels/registry";
 import {
   gridArea,
   moveItem,
@@ -55,14 +55,15 @@ export default function Grid(props: {
 
   // a span wider than the grid would create implicit columns past the window edge
   const items = createMemo(() =>
-    props.panels.map(
-      (id): LayoutItem => ({
+    props.panels.map((id): LayoutItem => {
+      const definition = panelDefinition(id);
+      return {
         id,
-        title: panelTitle(PANELS[id]),
-        w: Math.min(PANELS[id].size.w, columns()),
-        h: PANELS[id].size.h,
-      }),
-    ),
+        title: panelTitle(definition),
+        w: Math.min(definition.size.w, columns()),
+        h: definition.size.h,
+      };
+    }),
   );
   const itemById = createMemo(
     () => new Map(items().map((item) => [item.id, item])),

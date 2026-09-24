@@ -1,5 +1,11 @@
 import { createSignal } from "solid-js";
 import { sampleStats } from "./stats";
+import type { DebugEvent } from "@/core/debugger/report";
+import type {
+  AuroraReport,
+  AuroraState,
+  GpuTimelineFrame,
+} from "@/core/debugger/modules/aurora/report";
 
 // 5 s and 30 s at AURORA_REPORT.intervalMs = 250
 export const AURORA_HISTORY = { statsReports: 20, graphReports: 120 };

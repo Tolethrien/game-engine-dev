@@ -5,6 +5,7 @@ import { Block, Rows } from "../../grid/layout";
 import { auroraStore } from "../../aurora/store";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { METRIC_KEYS } from "@/core/debugger/modules/aurora/keys";
+import type { GpuTimelineFrame } from "@/core/debugger/modules/aurora/report";
 import { formatMs } from "../../format";
 
 type TimelineMode = "last" | "peak";

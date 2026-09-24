@@ -1,4 +1,4 @@
-import type { Component } from "solid-js";
+import { createComponent, type Component } from "solid-js";
 import { auroraStore } from "../aurora/store";
 import AuroraFramePanel from "./aurora/frame";
 import AuroraGpuTimingsPanel from "./aurora/gpuTimings";
@@ -8,6 +8,8 @@ import AuroraVramPanel from "./aurora/vram";
 import AuroraResourcesPanel from "./aurora/resources";
 import AuroraConfigPanel from "./aurora/config";
 import AuroraPresetPanel from "./aurora/preset";
+import WatchPanel from "./watch/watch";
+import { watchStore } from "../watch/store";
 
 export interface PanelDefinition {
   title: string | (() => string);
@@ -72,4 +74,40 @@ export const panelTitle = (definition: PanelDefinition) =>
     ? definition.title()
     : definition.title;
 
-export type PanelId = keyof typeof PANELS;
+type StaticPanelId = keyof typeof PANELS;
+export type PanelId = StaticPanelId | `watch:${string}`;
+
+const WATCH_PANEL = {
+  prefix: "watch:" as const,
+  defaultSize: { w: 3, h: 3 },
+};
+
+// created lazily and kept, so a panel keeps the same definition across re-renders
+const watchDefinitions = new Map<string, PanelDefinition>();
+
+export const watchPanelId = (name: string): PanelId =>
+  `${WATCH_PANEL.prefix}${name}`;
+
+export const isPanelId = (id: string): id is PanelId =>
+  id in PANELS || id.startsWith(WATCH_PANEL.prefix);
+
+export function panelDefinition(id: PanelId): PanelDefinition {
+  if (id in PANELS) return PANELS[id as StaticPanelId];
+  const name = id.slice(WATCH_PANEL.prefix.length);
+  let definition = watchDefinitions.get(name);
+  if (!definition) {
+    definition = {
+      title: () => {
+        const info = watchStore.info(name);
+        return info ? `${info.scope} · ${name}` : name;
+      },
+      get size() {
+        return watchStore.info(name)?.size ?? WATCH_PANEL.defaultSize;
+      },
+      component: () => createComponent(WatchPanel, { name }),
+      live: () => watchStore.has(name),
+    };
+    watchDefinitions.set(name, definition);
+  }
+  return definition;
+}

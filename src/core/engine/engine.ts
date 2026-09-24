@@ -61,6 +61,10 @@ export default class Engine {
     FPSOverlay.update();
 
     debug.performance.endFrame(Time.getFrameTime());
+    debug.log.endFrame();
+    // before watch, so a changed value shows up in the same frame
+    debug.command.endFrame();
+    debug.watch.endFrame();
 
     requestAnimationFrame((currentTime) => this.loop(currentTime));
   }

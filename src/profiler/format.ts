@@ -1,5 +1,9 @@
 export const formatCount = (value?: number) => value?.toLocaleString() ?? "—";
 
+// badge sized: anything above 999 reads the same at a glance
+export const formatBadgeCount = (value: number) =>
+  value > 999 ? "999+" : String(value);
+
 export const formatMs = (value?: number, digits = 2) =>
   value?.toFixed(digits) ?? "—";
 

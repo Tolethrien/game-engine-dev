@@ -1,3 +1,6 @@
+import type { ILogHandle } from "../../interfaces";
+import type { AuroraMemoryRow } from "./report";
+
 const FORMAT_BYTES: Record<string, number> = {
   r8unorm: 1,
   rg8unorm: 2,
@@ -39,14 +42,15 @@ export function textureBytes(
   height: number,
   layers: number,
   mips: number,
+  log: ILogHandle,
 ) {
   let bytesPerTexel = FORMAT_BYTES[format];
   if (bytesPerTexel === undefined) {
     bytesPerTexel = UNKNOWN_FORMAT_BYTES;
     if (!warnedFormats.has(format)) {
       warnedFormats.add(format);
-      console.warn(
-        `[Aurora] memory tracker: unknown format "${format}", assuming ${UNKNOWN_FORMAT_BYTES} B/texel`,
+      log.warn(
+        `memory tracker: unknown format "${format}", assuming ${UNKNOWN_FORMAT_BYTES} B/texel`,
       );
     }
   }
@@ -71,6 +75,8 @@ export class MemoryTracker {
     this.entries.delete(id),
   );
   private nextId = 0;
+
+  constructor(private readonly log: ILogHandle) {}
 
   public watch(device: GPUDevice) {
     const createTexture = device.createTexture.bind(device);
@@ -136,7 +142,14 @@ export class MemoryTracker {
     const size = descriptor.size;
     if (Array.isArray(size)) {
       const [width, height = 1, layers = 1] = size;
-      return textureBytes(descriptor.format, width, height, layers, descriptor.mipLevelCount ?? 1);
+      return textureBytes(
+        descriptor.format,
+        width,
+        height,
+        layers,
+        descriptor.mipLevelCount ?? 1,
+        this.log,
+      );
     }
     const extent = size as GPUExtent3DDict;
     return textureBytes(
@@ -145,6 +158,7 @@ export class MemoryTracker {
       extent.height ?? 1,
       extent.depthOrArrayLayers ?? 1,
       descriptor.mipLevelCount ?? 1,
+      this.log,
     );
   }
 

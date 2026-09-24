@@ -101,3 +101,5 @@ plans/
 # old versions kept locally
 src/core/auroraOld/
 src/profiler_old/
+# debugger log dumps
+.MisaLogs/

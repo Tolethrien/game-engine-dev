@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js";
+import type { PerformanceSnapshot } from "@/core/debugger/report";
 
 export const HISTORY_SAMPLES = 60;
 

@@ -1,6 +1,9 @@
 import { BrowserWindow, app } from "electron";
 import path from "path";
 import { registerWindowEventsIPC } from "../IPC/gameWindow";
+import { resetLogSession, watchGameWindow } from "../IPC/log";
+import { resetWatchSession } from "../IPC/watch";
+import { resetCommandSession } from "../IPC/command";
 import { loadRenderer } from "./loader";
 import { sendToProfiler } from "./profiler";
 
@@ -21,6 +24,7 @@ export function createGameWindow() {
   gameWindow.setAspectRatio(16 / 9);
 
   registerWindowEventsIPC();
+  if (!app.isPackaged) watchGameWindow(gameWindow);
   loadRenderer(gameWindow, {
     devServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
     viteName: MAIN_WINDOW_VITE_NAME,
@@ -49,7 +53,10 @@ function onDevServer() {
     activate: false,
     title: "Misa Devtools",
   });
-  gameWindow.webContents.on("did-start-loading", () =>
-    sendToProfiler("debug:gameReloaded"),
-  );
+  gameWindow.webContents.on("did-start-loading", () => {
+    sendToProfiler("debug:gameReloaded");
+    resetLogSession();
+    resetWatchSession();
+    resetCommandSession();
+  });
 }
