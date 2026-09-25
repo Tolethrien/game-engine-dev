@@ -20,6 +20,11 @@ import type {
   CommandEntry,
   CommandRegistryMessage,
 } from "../core/debugger/modules/command/report";
+import type {
+  TweakInput,
+  TweakMessage,
+  TweakPanelInfo,
+} from "../core/debugger/modules/tweak/report";
 
 const WINDOW = {
   onWindowResize: (callback: (size: Size2D) => void) =>
@@ -84,6 +89,16 @@ const DEBUG = {
     ipcRenderer.invoke("debug:commandComplete", query) as Promise<
       CommandCompletion | null
     >,
+  //tweak
+  sendTweak: (message: TweakMessage) => ipcRenderer.send("debug:tweak", message),
+  onTweak: (callback: (message: TweakMessage) => void) =>
+    on("debug:tweak", callback),
+  getTweakRegistry: () =>
+    ipcRenderer.invoke("debug:tweakRegistry") as Promise<TweakPanelInfo[]>,
+  sendTweakInput: (input: TweakInput) =>
+    ipcRenderer.send("debug:tweakInput", input),
+  onTweakInput: (callback: (input: TweakInput) => void) =>
+    on("debug:tweakInput", callback),
   //reload
   onGameReloaded: (callback: () => void) => on("debug:gameReloaded", callback),
   onProfilerState: (callback: (isOpen: boolean) => void) =>

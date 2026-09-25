@@ -75,6 +75,7 @@ class LogHandle implements ILogHandle {
   private lastTime = -Infinity;
   private lastFrame = -1;
   private lastKey = "";
+  private keyed: Map<string, LogHandle> | null = null;
 
   constructor(
     protected readonly channel: LogChannel,
@@ -103,8 +104,15 @@ class LogHandle implements ILogHandle {
   public changed(): ILogHandle {
     return this.derive({ ...this.filter, changed: true });
   }
-  public once(): ILogHandle {
-    return this.derive({ ...this.filter, once: true });
+  public once(key?: string): ILogHandle {
+    if (key === undefined) return this.derive({ ...this.filter, once: true });
+    this.keyed ??= new Map();
+    let handle = this.keyed.get(key);
+    if (!handle) {
+      handle = this.derive({ ...this.filter, once: true });
+      this.keyed.set(key, handle);
+    }
+    return handle;
   }
 
   public flushFrame() {
@@ -132,7 +140,8 @@ class LogHandle implements ILogHandle {
     const now = performance.now();
     if (now - channel.resetAt > LOGGER.valveResetMs) channel.resetValve(now);
 
-    if (filter.once && this.lastId >= 0) return this.suppress("once");
+    // no counter: repeats of a once-warning called every frame would bump the entry forever
+    if (filter.once && this.lastId >= 0) return;
     if (filter.throttleMs !== null) {
       // before the loop runs the frame never advances, so "once per frame" falls back to the valve interval
       const open =

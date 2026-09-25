@@ -19,9 +19,11 @@ struct DepthRange {
 };
 
 @group(0) @binding(0) var<uniform> frame: Frame;
-@group(2) @binding(0) var source: texture_2d_array<f32>;
 @group(2) @binding(1) var<uniform> params: Params;
 @group(2) @binding(2) var<storage, read_write> range: DepthRange;
+
+// defines source, sourceSize(mip), sourceLayers(mip) and load(coord, index, mip) for 2d-array or 3d
+// SOURCE
 
 override groupSize: u32 = 8u;
 
@@ -38,8 +40,8 @@ struct VertexOut {
 fn level() -> u32 {
   return min(params.mip, textureNumLevels(source) - 1u);
 }
-fn layer() -> u32 {
-  return min(params.layer, textureNumLayers(source) - 1u);
+fn layer(mip: u32) -> u32 {
+  return min(params.layer, sourceLayers(mip) - 1u);
 }
 fn encodeSrgb(color: vec3f) -> vec3f {
   let low = color * 12.92;
@@ -51,10 +53,10 @@ fn encodeSrgb(color: vec3f) -> vec3f {
 @compute @workgroup_size(groupSize, groupSize)
 fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let mip = level();
-  if (any(id.xy >= textureDimensions(source, mip))) {
+  if (any(id.xy >= sourceSize(mip))) {
     return;
   }
-  let depth = textureLoad(source, id.xy, layer(), mip).r;
+  let depth = load(id.xy, layer(mip), mip).r;
   if (depth >= DEPTH_CLEAR) {
     return;
   }
@@ -77,14 +79,14 @@ fn vertexMain(@builtin(vertex_index) index: u32) -> VertexOut {
 @fragment
 fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
   let mip = level();
-  let size = vec2f(textureDimensions(source, mip));
+  let size = vec2f(sourceSize(mip));
   let scale = min(frame.canvasSize.x / size.x, frame.canvasSize.y / size.y);
   let offset = (frame.canvasSize - size * scale) * 0.5;
   let coord = (in.position.xy - offset) / scale;
   if (any(coord < vec2f(0.0)) || any(coord >= size)) {
     return BACKGROUND;
   }
-  let texel = textureLoad(source, vec2u(coord), layer(), mip);
+  let texel = load(vec2u(coord), layer(mip), mip);
 
   if (params.mode == MODE_DEPTH) {
     let low = bitcast<f32>(atomicLoad(&range.low));

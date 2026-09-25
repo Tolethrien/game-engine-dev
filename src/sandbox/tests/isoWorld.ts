@@ -58,15 +58,15 @@ const TORCH = {
   height: 76,
   color: [255, 150, 60, 255] as RGBA,
   // emissive intensity: over 1 so bloom picks the post up
-  glow: 4,
-  light: { radius: 170, intensity: 1.6, falloff: 4 },
+  glow: 2,
+  light: { radius: 120, intensity: 0.7, falloff: 2 },
   // flicker: share of the brightness it wobbles by, and how fast
   flicker: { amount: 0.15, speed: 9 },
 };
 // night, so the torches carry the scene
 const AMBIENT = { color: [45, 55, 95, 255] as RGBA, intensity: 1 };
 // zoomSpeed: zoom doubles every this many seconds of holding an arrow
-const CAMERA = { speed: 900, zoomSpeed: 1, minZoom: 0.4, maxZoom: 3 };
+const CAMERA = { speed: 300, zoomSpeed: 1, minZoom: 0.4, maxZoom: 3 };
 // ground behind everything: every tile shares the lowest sort point
 const GROUND_SORT: Position3D = { x: 0, y: 0, z: 0 };
 
@@ -75,12 +75,12 @@ const camera = { center: mapCenter(), zoom: 1 };
 
 // ambient is state, set once
 export function setupIsoWorld() {
-  Light.setAmbient({
-    from: AMBIENT.color,
-    to: AMBIENT.color,
-    angle: 0,
-    intensity: AMBIENT.intensity,
-  });
+  // Light.setAmbient({
+  //   from: AMBIENT.color,
+  //   to: AMBIENT.color,
+  //   angle: 0,
+  //   intensity: AMBIENT.intensity,
+  // });
 }
 // grass map with foliage and torches, the base scene for the post effects;
 // WASD pans, up/down arrows zoom
@@ -94,32 +94,32 @@ export function isoWorldTest(t: number) {
 }
 
 function drawTorch(torch: Torch, t: number) {
-  const { flicker } = TORCH;
-  // two sines at unrelated speeds read as a flame, one alone as a pulse
-  const wobble =
-    Math.sin(t * flicker.speed + torch.phase) * 0.6 +
-    Math.sin(t * flicker.speed * 2.3 + torch.phase * 1.7) * 0.4;
-  const brightness = 1 + wobble * flicker.amount;
-  torch.params[0] = TORCH.glow * brightness;
-  Draw.rect({
-    position: {
-      x: torch.base.x - TORCH.width / 2,
-      y: torch.base.y - TORCH.height,
-      z: 0,
-    },
-    size: { width: TORCH.width, height: TORCH.height },
-    color: TORCH.color,
-    material: EMISSIVE_MATERIAL,
-    params: torch.params,
-    sort: { x: torch.base.x, y: torch.base.y, z: 0 },
-  });
-  Light.point({
-    position: { x: torch.base.x, y: torch.base.y - TORCH.height / 2 },
-    radius: TORCH.light.radius,
-    color: TORCH.color,
-    intensity: TORCH.light.intensity * brightness,
-    falloff: TORCH.light.falloff,
-  });
+  // const { flicker } = TORCH;
+  // // two sines at unrelated speeds read as a flame, one alone as a pulse
+  // const wobble =
+  //   Math.sin(t * flicker.speed + torch.phase) * 0.6 +
+  //   Math.sin(t * flicker.speed * 2.3 + torch.phase * 1.7) * 0.4;
+  // const brightness = 1 + wobble * flicker.amount;
+  // torch.params[0] = TORCH.glow * brightness;
+  // Draw.rect({
+  //   position: {
+  //     x: torch.base.x - TORCH.width / 2,
+  //     y: torch.base.y - TORCH.height,
+  //     z: 0,
+  //   },
+  //   size: { width: TORCH.width, height: TORCH.height },
+  //   color: TORCH.color,
+  //   material: EMISSIVE_MATERIAL,
+  //   params: torch.params,
+  //   sort: { x: torch.base.x, y: torch.base.y, z: 0 },
+  // });
+  // Light.point({
+  //   position: { x: torch.base.x, y: torch.base.y - TORCH.height / 2 },
+  //   radius: TORCH.light.radius,
+  //   color: TORCH.color,
+  //   intensity: TORCH.light.intensity * brightness,
+  //   falloff: TORCH.light.falloff,
+  // });
 }
 
 function buildWorld() {
@@ -161,7 +161,8 @@ function buildWorld() {
       const plant = random.weightedRandom(plants, weights);
       for (const options of plant.layers) {
         const name = options[random.int(0, options.length - 1)];
-        if (name !== null) objects.push({ sprite: foliageSprite(name, center) });
+        if (name !== null)
+          objects.push({ sprite: foliageSprite(name, center) });
       }
     }
   }

@@ -121,6 +121,21 @@ export default class ResourcePool {
     }
     return view;
   }
+  public static reservedArrayView(name: string) {
+    const reservation = this.reservedTexture(name);
+    let view = reservation.views.get(ARRAY_VIEW);
+    if (!view) {
+      view = reservation.texture.createView({
+        label: `reserved|${name}|array`,
+        dimension: "2d-array",
+        aspect: DEPTH_FORMATS.has(reservation.texture.format)
+          ? "depth-only"
+          : "all",
+      });
+      reservation.views.set(ARRAY_VIEW, view);
+    }
+    return view;
+  }
   public static unreserve(name: string) {
     const reservation = this.reservedTexture(name);
     if (--reservation.owners > 0) return;

@@ -7,6 +7,7 @@ import { watchPanelId, type PanelId } from "./panels/registry";
 import { watchStore } from "./watch/store";
 import CustomTab from "./tabs/custom";
 import OptionsMenu from "./components/optionsMenu";
+import { tweakStore } from "./tweak/store";
 
 export type TabId = "custom" | "console" | "watch" | "aurora";
 
@@ -15,6 +16,19 @@ interface TabDefinition {
   component?: Component;
   panels?: PanelId[] | (() => PanelId[]);
   empty?: string;
+  actions?: Component;
+}
+
+function AuroraActions() {
+  return (
+    <button
+      class="cursor-pointer rounded border border-divider px-2 py-0.5 text-fg-dim not-disabled:hover:text-fg disabled:cursor-default disabled:opacity-40"
+      disabled={tweakStore.groupPanels("aurora").length === 0}
+      onClick={() => tweakStore.openGroup("aurora")}
+    >
+      ⚙ Settings
+    </button>
+  );
 }
 
 export const TABS: Record<TabId, TabDefinition> = {
@@ -27,6 +41,7 @@ export const TABS: Record<TabId, TabDefinition> = {
   },
   aurora: {
     label: "Aurora",
+    actions: AuroraActions,
     panels: [
       "auroraFrame",
       "auroraGpuTimings",
@@ -85,6 +100,7 @@ export function TabContent() {
               : ((tab().panels as PanelId[] | undefined) ?? [])
           }
           empty={tab().empty}
+          actions={tab().actions}
         />
       }
     >

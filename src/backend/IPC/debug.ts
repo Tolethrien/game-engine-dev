@@ -7,6 +7,7 @@ import {
 import { registerLogIPC } from "./log";
 import { registerWatchIPC } from "./watch";
 import { registerCommandIPC } from "./command";
+import { registerTweakIPC } from "./tweak";
 
 const DEBUG_CHANNELS = ["debug:performance", "debug:aurora"] as const;
 
@@ -17,6 +18,7 @@ export function registerDebugIPC() {
   registerLogIPC();
   registerWatchIPC();
   registerCommandIPC();
+  registerTweakIPC();
   ipcMain.on("profiler:setTitleBarColors", (_, colors) =>
     setProfilerTitleBarColors(colors),
   );

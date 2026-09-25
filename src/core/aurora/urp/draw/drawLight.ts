@@ -1,4 +1,5 @@
 import { COLOR } from "@axiom/color";
+import { debug } from "@debug";
 import VertexLayout from "@aurora/utils/vertexLayout";
 import type LightPass from "../passes/lightPass";
 import { clearShapeData, writeCorners } from "./drawInternal";
@@ -38,9 +39,10 @@ const DEFAULT_FALLOFF = 4;
 export class LightDraw {
   // null until the pass is set up, lights before that only warn
   private target: LightPass | null = null;
-  private warnedTarget = false;
+  private readonly targetWarning = debug.log.scope("auroraURP").once();
   // state, unlike lights it stays until changed
   private readonly ambient: AmbientLight = {
+    enabled: true,
     from: COLOR.WHITE,
     to: COLOR.WHITE,
     angle: 0,
@@ -54,6 +56,9 @@ export class LightDraw {
     return this.ambient;
   }
 
+  public get getEnabled() {
+    return this.ambient.enabled;
+  }
   public setAmbient(props: Partial<AmbientLight>) {
     Object.assign(this.ambient, props);
   }
@@ -94,6 +99,7 @@ export class LightDraw {
   }
 
   private writeLight(props: LightBase, width: number, height: number) {
+    if (!this.ambient.enabled) return null;
     const color = props.color ?? COLOR.WHITE;
     const intensity = props.intensity ?? 1;
     if (color[3] === 0 || intensity <= 0 || width <= 0 || height <= 0) {
@@ -112,9 +118,7 @@ export class LightDraw {
     return view;
   }
   private warnNoTarget() {
-    if (this.warnedTarget) return;
-    this.warnedTarget = true;
-    console.warn(
+    this.targetWarning.warn(
       "Light: nothing to draw into yet, call it after URP.init and Aurora.build",
     );
   }

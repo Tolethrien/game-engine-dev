@@ -1,4 +1,5 @@
 import { assert } from "@axiom/utils";
+import { debug } from "@debug";
 import AABB, { Bounds } from "@/core/axiom/AABB";
 import type ClipBuffer from "./clipBuffer";
 import { CLIP, ClipShape, DrawClip } from "./clip";
@@ -15,7 +16,7 @@ export default class ClipStack {
   private readonly levels: ClipLevel[] = [];
   private depth = 0;
   private readonly owner: string;
-  private warnedBalance = false;
+  private readonly balanceWarning = debug.log.scope("auroraURP").once();
   private readonly shape: ClipShape = {
     x: 0,
     y: 0,
@@ -101,9 +102,8 @@ export default class ClipStack {
 
   // a frame that ends with open clips would leak them into the next one
   public reset() {
-    if (this.depth !== 0 && !this.warnedBalance) {
-      this.warnedBalance = true;
-      console.warn(
+    if (this.depth !== 0) {
+      this.balanceWarning.warn(
         `${this.owner}: ${this.depth} pushClip without popClip at the end of a frame, the stack is reset`,
       );
     }

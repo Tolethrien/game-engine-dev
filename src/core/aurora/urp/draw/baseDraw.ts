@@ -1,4 +1,5 @@
 import { COLOR } from "@axiom/color";
+import { debug } from "@debug";
 import AABB, { Bounds } from "@axiom/AABB";
 import AssetManager, { DEFAULT_FONT_NAME } from "@aurora/assetManager";
 import Font, { Glyph } from "@aurora/text/font";
@@ -62,7 +63,8 @@ export default abstract class BaseDraw<Writer extends InstanceWriter> {
     rounded: 0,
   };
   private readonly clips: ClipStack;
-  private readonly warned = new Set<string>();
+  // per instance: World and Gui share the scope, so the same key must not silence the other one
+  protected readonly warnings = debug.log.scope("auroraURP").once();
   private readonly textScratch = {
     run: new TextRun(),
     source: null as string | null,
@@ -414,8 +416,7 @@ export default abstract class BaseDraw<Writer extends InstanceWriter> {
   }
   private textShadowVisible(shadow: DrawShadow) {
     if (shadow.inset) {
-      this.warnOnce(
-        "textInset",
+      this.warnings.once("textInset").warn(
         `${this.name}: inset shadows are for boxes, text ignores them`,
       );
       return false;
@@ -450,8 +451,7 @@ export default abstract class BaseDraw<Writer extends InstanceWriter> {
     if (outline) {
       if (limit <= 0) return;
       if (outline.width > limit) {
-        this.warnOnce(
-          "textOutline",
+        this.warnings.once("textOutline").warn(
           `${this.name}: text outline ${outline.width} is wider than the glyph distance field reaches (${limit.toFixed(1)}), clamped. Raise the font atlas spread or the mtsdf distanceRange`,
         );
       }
@@ -465,8 +465,7 @@ export default abstract class BaseDraw<Writer extends InstanceWriter> {
       blur = Math.max(shadow.blur ?? 0, 0);
       spread = shadow.spread ?? 0;
       if (Math.abs(spread) + blur > limit) {
-        this.warnOnce(
-          "textShadow",
+        this.warnings.once("textShadow").warn(
           `${this.name}: text shadow spread + blur ${Math.abs(spread) + blur} is wider than the glyph distance field reaches (${limit.toFixed(1)}), blur reduced first`,
         );
         spread = Math.max(-limit, Math.min(spread, limit));
@@ -560,14 +559,8 @@ export default abstract class BaseDraw<Writer extends InstanceWriter> {
     return view;
   }
 
-  protected warnOnce(key: string, message: string) {
-    if (this.warned.has(key)) return;
-    this.warned.add(key);
-    console.warn(message);
-  }
   private warnNoTarget() {
-    this.warnOnce(
-      "target",
+    this.warnings.once("target").warn(
       `${this.name}: nothing to draw into yet, call it after URP.init and Aurora.build`,
     );
   }

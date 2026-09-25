@@ -1,4 +1,7 @@
 export const LOG_SCOPE = {
+  aurora: "Aurora: core",
+  auroraAssets: "Aurora: assets",
+  auroraURP: "URP",
   // sandbox tests
   sandbox: "Sandbox",
   consoleTest: "ConsoleTest",

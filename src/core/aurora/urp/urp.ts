@@ -10,8 +10,12 @@ import PostPass from "./passes/postPass";
 import EffectPass from "./passes/effectPass";
 import BloomPass from "./passes/bloomPass";
 import DiffusionPass from "./passes/diffusionPass";
+import BlurPass from "./passes/blurPass";
 import { BLOOM_DEFAULTS, postDraw } from "./draw/drawPost";
+import { lightDraw } from "./draw/drawLight";
+import { debug } from "@debug";
 import type { AgxLook, BloomProps, ToneMapMode } from "./draw/drawTypes";
+import ScreenEffect from "./effects/screenEffect";
 export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z";
 export type SortAnchor = "top" | "center" | "bottom";
 
@@ -32,6 +36,8 @@ export interface ToneMapProps {
 }
 export interface URPProps extends SortProps {
   toneMapping: ToneMapProps;
+  // start value, Light.setAmbient({ enabled }) changes it live
+  lighting: { enabled: boolean };
   // start values, Post.setBloom changes them live
   bloom: BloomProps;
 }
@@ -41,6 +47,7 @@ const BASE_CONFIG: URPProps = {
   step: { x: 1, y: 1, z: 1 },
   zRange: [0, 255],
   toneMapping: { mode: "none", exposure: 0, look: "none" },
+  lighting: { enabled: true },
   bloom: { ...BLOOM_DEFAULTS },
 };
 export default class URP extends RenderPreset<URPProps> {
@@ -49,10 +56,33 @@ export default class URP extends RenderPreset<URPProps> {
   public static async init(props: DeepPartial<URPProps> = {}) {
     const base = structuredClone(BASE_CONFIG);
     const config = deepMerge(base, props);
+    lightDraw.setAmbient({ enabled: config.lighting.enabled });
     postDraw.setBloom(config.bloom);
     postDraw.setToneMapping(config.toneMapping.mode);
     postDraw.setExposure(config.toneMapping.exposure);
     postDraw.setAgxLook(config.toneMapping.look);
+    debug.aurora.mood(postDraw, lightDraw, {
+      get: () => ({
+        sortMode: config.sortMode,
+        sortAnchor: config.sortAnchor,
+        step: config.step,
+        zRange: config.zRange,
+      }),
+      apply: (changes) =>
+        void URP.init({
+          ...config,
+          toneMapping: {
+            mode: postDraw.getToneMapping,
+            exposure: postDraw.getExposure,
+            look: postDraw.getAgxLook,
+          },
+          bloom: { ...postDraw.getBloom },
+          lighting: { enabled: lightDraw.getAmbient.enabled },
+          ...changes,
+        }),
+      effects: () => ScreenEffect.getAll,
+      effect: (name) => ScreenEffect.get(name),
+    });
     await RenderGraph.setPreset(new URP(config));
   }
 
@@ -64,6 +94,7 @@ export default class URP extends RenderPreset<URPProps> {
       new LightCompositePass(),
       new BloomPass(),
       new DiffusionPass(),
+      new BlurPass(),
       new EffectPass("hdr"),
       new PostPass(),
       new EffectPass("screen"),

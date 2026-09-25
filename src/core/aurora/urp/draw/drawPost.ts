@@ -11,6 +11,7 @@ import type {
   FlashOptions,
   MaterialParams,
   RadialBlur,
+  SceneBlur,
   ToneMapMode,
   Vignette,
 } from "./drawTypes";
@@ -54,6 +55,15 @@ export const DIFFUSION_DEFAULTS = Object.freeze<DiffusionProps>({
   haze: 0,
   hazeColor: [255, 255, 255, 255],
 });
+export const BLUR_DEFAULTS = Object.freeze<SceneBlur>({
+  sigma: 0,
+  amount: 1,
+  mask: "full",
+  reach: 1,
+  smoothness: 0.5,
+  roundness: 1,
+  center: { x: 0.5, y: 0.5 },
+});
 // typed on freeze, otherwise filter is inferred as number[] instead of RGBA
 export const COLOR_DEFAULTS = Object.freeze<ColorGrading>({
   brightness: 1,
@@ -90,6 +100,10 @@ export class PostDraw {
     ...DIFFUSION_DEFAULTS,
     hazeColor: [...DIFFUSION_DEFAULTS.hazeColor],
   };
+  private readonly blur: SceneBlur = {
+    ...BLUR_DEFAULTS,
+    center: { ...BLUR_DEFAULTS.center },
+  };
   private readonly color: ColorGrading = {
     ...COLOR_DEFAULTS,
     filter: [...COLOR_DEFAULTS.filter],
@@ -120,6 +134,9 @@ export class PostDraw {
   }
   public get getDiffusion(): Readonly<DiffusionProps> {
     return this.diffusion;
+  }
+  public get getBlur(): Readonly<SceneBlur> {
+    return this.blur;
   }
   public get getColor(): Readonly<ColorGrading> {
     return this.color;
@@ -178,6 +195,10 @@ export class PostDraw {
   public setDiffusion(props: Partial<DiffusionProps>) {
     Object.assign(this.diffusion, props);
     if (props.hazeColor) this.diffusion.hazeColor = [...props.hazeColor];
+  }
+  public setBlur(props: Partial<SceneBlur>) {
+    Object.assign(this.blur, props);
+    if (props.center) this.blur.center = { ...props.center };
   }
   public setExposure(stops: number) {
     this.exposure = stops;

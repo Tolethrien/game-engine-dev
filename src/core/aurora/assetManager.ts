@@ -1,4 +1,5 @@
 import { assert, loadImg } from "@axiom/utils";
+import { debug } from "@debug";
 import Aurora from "./core";
 import Font, {
   DynamicFontSource,
@@ -14,13 +15,7 @@ import type { FontAtlasConfig } from "./config";
 import fallbackFontUrl from "./assets/fallbackFont.png";
 
 export type AssetName = "albedo" | "normal" | "height" | "ui" | "fonts";
-export const ASSET_NAMES: readonly AssetName[] = [
-  "albedo",
-  "normal",
-  "height",
-  "ui",
-  "fonts",
-];
+
 export interface SetTexturesOptions {
   sources: TextureSource[];
   normalMaps: boolean;
@@ -44,31 +39,39 @@ export interface AtlasPage {
   layerWidth: number;
   layerHeight: number;
 }
-
-const ALBEDO_FORMAT_LINEAR: GPUTextureFormat = "rgba8unorm-srgb";
-const ALBEDO_FORMAT_GAMMA: GPUTextureFormat = "rgba8unorm";
-const NORMAL_FORMAT: GPUTextureFormat = "rgba8unorm";
-const HEIGHT_FORMAT: GPUTextureFormat = "r8unorm";
-const ALBEDO_NEUTRAL = [255, 255, 255, 255];
-const NORMAL_NEUTRAL = [128, 128, 255, 255];
-const HEIGHT_NEUTRAL = [0];
-const UI_FORMAT: GPUTextureFormat = "rgba8unorm";
-// glyph coverage is plain data, srgb decoding would move the edges
-const FONTS_FORMAT: GPUTextureFormat = "rgba8unorm";
-const FONTS_NEUTRAL = [0, 0, 0, 0];
+export const ASSET_NAMES: readonly AssetName[] = [
+  "albedo",
+  "normal",
+  "height",
+  "ui",
+  "fonts",
+];
+const FORMAT = {
+  albedoLinear: "rgba8unorm-srgb",
+  albedoGamma: "rgba8unorm",
+  normal: "rgba8unorm",
+  height: "r8unorm",
+  ui: "rgba8unorm",
+  // glyph coverage is plain data, srgb decoding would move the edges
+  fonts: "rgba8unorm",
+} satisfies Record<string, GPUTextureFormat>;
+const NEUTRAL = {
+  albedo: [255, 255, 255, 255],
+  normal: [128, 128, 255, 255],
+  height: [0],
+  fonts: [0, 0, 0, 0],
+};
 const DYNAMIC_SIZE = 16;
 const WORLD_ASSETS: AssetName[] = ["albedo", "normal", "height"];
 export const DEFAULT_FONT_NAME = "default";
-// bit-identical to src/sandbox/assets/fonts/testGrid/testGrid.png
 const BUILTIN_FONT: GridFontSource = {
   name: DEFAULT_FONT_NAME,
   type: "grid",
   url: fallbackFontUrl,
   cell: { width: 16, height: 30 },
   chars:
-    Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join(
-      "",
-    ) + "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ",
+    Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join("") +
+    "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ",
   baseline: 25,
 };
 
@@ -78,11 +81,14 @@ export default class AssetManager {
   declare private static defaultPage: AtlasPage;
   declare private static uiDefaultPage: AtlasPage;
   private static uiPages: Map<string, AtlasPage> = new Map();
-  private static uiWarned: Set<string> = new Set();
   private static pages: Map<string, AtlasPage> = new Map();
-  private static warned: Set<string> = new Set();
   private static fonts: Map<string, FontData> = new Map();
-  private static fontWarned: Set<string> = new Set();
+  // a reload starts a new set of keys, so a name missing again is reported again
+  private static warnings = {
+    texture: debug.log.scope("auroraAssets").once(),
+    ui: debug.log.scope("auroraAssets").once(),
+    font: debug.log.scope("auroraAssets").once(),
+  };
   private static fontsVersion = 0;
   private static dynamicSources: Map<string, DynamicFontSource> = new Map();
   private static dynamicFonts: Map<string, Map<number, DynamicFont>> =
@@ -142,8 +148,8 @@ export default class AssetManager {
     const textures: Map<AssetName, GPUTexture> = new Map();
     const albedoArr = this.buildArray(
       "albedo",
-      Aurora.isLinear ? ALBEDO_FORMAT_LINEAR : ALBEDO_FORMAT_GAMMA,
-      ALBEDO_NEUTRAL,
+      Aurora.isLinear ? FORMAT.albedoLinear : FORMAT.albedoGamma,
+      NEUTRAL.albedo,
       albedoBitmaps,
       layerWidth,
       layerHeight,
@@ -152,8 +158,8 @@ export default class AssetManager {
     if (normalMaps) {
       const normalArr = this.buildArray(
         "normal",
-        NORMAL_FORMAT,
-        NORMAL_NEUTRAL,
+        FORMAT.normal,
+        NEUTRAL.normal,
         normalBitmaps,
         layerWidth,
         layerHeight,
@@ -163,8 +169,8 @@ export default class AssetManager {
     if (heightMaps) {
       const heightArr = this.buildArray(
         "height",
-        HEIGHT_FORMAT,
-        HEIGHT_NEUTRAL,
+        FORMAT.height,
+        NEUTRAL.height,
         heightBitmaps,
         layerWidth,
         layerHeight,
@@ -211,7 +217,7 @@ export default class AssetManager {
       layerHeight,
     };
     this.pages = pages;
-    this.warned.clear();
+    this.warnings.texture = debug.log.scope("auroraAssets").once();
   }
   public static async setUITextures(sources: UISource[]) {
     const names: Set<string> = new Set();
@@ -235,8 +241,8 @@ export default class AssetManager {
 
     const texture = this.buildArray(
       "ui",
-      UI_FORMAT,
-      ALBEDO_NEUTRAL,
+      FORMAT.ui,
+      NEUTRAL.albedo,
       bitmaps,
       layerWidth,
       layerHeight,
@@ -268,7 +274,7 @@ export default class AssetManager {
       layerHeight,
     };
     this.uiPages = pages;
-    this.uiWarned.clear();
+    this.warnings.ui = debug.log.scope("auroraAssets").once();
   }
   public static async setFonts(sources: FontSource[], atlas: FontAtlasConfig) {
     const names: Set<string> = new Set();
@@ -298,8 +304,8 @@ export default class AssetManager {
     const pages = atlas.pages;
     const texture = this.buildArray(
       "fonts",
-      FONTS_FORMAT,
-      FONTS_NEUTRAL,
+      FORMAT.fonts,
+      NEUTRAL.fonts,
       [],
       atlas.pageSize,
       atlas.pageSize,
@@ -338,7 +344,7 @@ export default class AssetManager {
       texture.createView({ label: "fontsArrayView", dimension: "2d-array" }),
     );
     this.fonts = fonts;
-    this.fontWarned.clear();
+    this.warnings.font = debug.log.scope("auroraAssets").once();
     this.dynamicSources = new Map(
       dynamics.map((source) => [source.name, source]),
     );
@@ -381,29 +387,26 @@ export default class AssetManager {
       return dynamic;
     }
 
-    if (!this.fontWarned.has(name)) {
-      console.warn(`Font "${name}" not found, using default`);
-      this.fontWarned.add(name);
-    }
+    this.warnings.font
+      .once(name)
+      .warn(`Font "${name}" not found, using default`);
     return this.defaultFont;
   }
 
   public static getTexture(name: string): AtlasPage {
     const page = this.pages.get(name);
     if (page) return page;
-    if (!this.warned.has(name)) {
-      console.warn(`Texture "${name}" not found, using default`);
-      this.warned.add(name);
-    }
+    this.warnings.texture
+      .once(name)
+      .warn(`Texture "${name}" not found, using default`);
     return this.defaultPage;
   }
   public static getUITexture(name: string): AtlasPage {
     const page = this.uiPages.get(name);
     if (page) return page;
-    if (!this.uiWarned.has(name)) {
-      console.warn(`UI texture "${name}" not found, using default`);
-      this.uiWarned.add(name);
-    }
+    this.warnings.ui
+      .once(name)
+      .warn(`UI texture "${name}" not found, using default`);
     return this.uiDefaultPage;
   }
 

@@ -14,6 +14,14 @@ const LIGHT_BINDS = {
   ambient: { binding: 0, type: "uniform" },
 } satisfies PassBindEntries;
 
+const WHITE_AMBIENT = {
+  enabled: true,
+  from: [255, 255, 255, 255],
+  to: [255, 255, 255, 255],
+  angle: 0,
+  intensity: 1,
+} as const;
+
 // light map: the ambient gradient, then every light added on top
 export default class LightPass extends RenderPass {
   name: string = "LightPass";
@@ -97,7 +105,10 @@ export default class LightPass extends RenderPass {
   }
 
   private writeAmbient() {
-    const { from, to, angle, intensity } = lightDraw.getAmbient;
+    // off: a white map, so what still reads it (world effects) sees an unlit scene
+    const { from, to, angle, intensity } = lightDraw.getEnabled
+      ? lightDraw.getAmbient
+      : WHITE_AMBIENT;
     const floats = this.ambientUniform.floats;
     for (let channel = 0; channel < 3; channel++) {
       floats[channel] = Aurora.colorChannel(from[channel]) * intensity;

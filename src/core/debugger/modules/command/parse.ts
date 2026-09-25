@@ -116,8 +116,19 @@ export function formatPath(path: readonly PathKey[]) {
 }
 
 // the text a value would be typed as in a command
-export function formatLiteral(value: unknown): string {
+export function formatLiteral(value: unknown, seen = new Set<object>()): string {
   if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "object" && value !== null && !seen.has(value)) {
+    const prototype = Object.getPrototypeOf(value);
+    if (Array.isArray(value) || prototype === Object.prototype || prototype === null) {
+      seen.add(value);
+      const text = Array.isArray(value)
+        ? `[${value.map((item) => formatLiteral(item, seen)).join(", ")}]`
+        : formatObject(value as Record<string, unknown>, seen);
+      seen.delete(value);
+      return text;
+    }
+  }
   if (typeof value === "object" && value !== null) {
     try {
       return JSON.stringify(value);
@@ -126,6 +137,14 @@ export function formatLiteral(value: unknown): string {
     }
   }
   return String(value);
+}
+
+function formatObject(value: Record<string, unknown>, seen: Set<object>) {
+  const entries = Object.entries(value).map(
+    ([key, item]) =>
+      `${isIdentifier(key) ? key : JSON.stringify(key)}: ${formatLiteral(item, seen)}`,
+  );
+  return entries.length === 0 ? "{}" : `{ ${entries.join(", ")} }`;
 }
 
 export function formatParseError(

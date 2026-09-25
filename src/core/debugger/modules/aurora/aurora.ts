@@ -2,8 +2,21 @@ import type { Pass } from "@/core/aurora/pass";
 import type {
   AuroraDebugData,
   IAuroraModule,
+  ICommandModule,
   ILogHandle,
+  ITweakModule,
+  UrpDebugData,
 } from "../../interfaces";
+import type { PostDraw } from "@/core/aurora/urp/draw/drawPost";
+import type { LightDraw } from "@/core/aurora/urp/draw/drawLight";
+import type { TexturePreview } from "@/core/aurora/urp/passes/previewPass";
+import { moodPanel } from "./mood";
+import { previewPanel } from "./preview";
+import { catalogPanel, effectsPanel } from "./effects";
+import { settingsPanel } from "./settings";
+import { urpPanel } from "./urp";
+import { cameraPanel } from "./camera";
+import { AURORA_PAGES } from "./pages";
 import { profilerState } from "../../profilerState";
 import { AURORA_REPORT, METRIC_KEYS, statKey } from "./keys";
 import { SeriesBuffer } from "./seriesBuffer";
@@ -49,13 +62,39 @@ export class AuroraDevModule implements IAuroraModule {
   private gpuInfo: GpuInfo | null = null;
   private adapter: AuroraAdapter | null = null;
 
-  constructor(private readonly log: ILogHandle) {
+  constructor(
+    private readonly log: ILogHandle,
+    private readonly tweak: ITweakModule,
+    command: ICommandModule,
+  ) {
     this.memory = new MemoryTracker(log);
+    // editable, or the console refuses to call its methods; frozen, so aurora.config cannot be replaced
+    const root = Object.freeze({
+      config: (page?: string) =>
+        page === undefined
+          ? this.tweak.openGroup(AURORA_PAGES.group)
+          : this.tweak.open(page),
+    });
+    command.expose("aurora", () => root, {
+      hint: `Aurora settings window: aurora.config(page?), pages: ${Object.keys(AURORA_PAGES.order).join(", ")}`,
+    });
     window.API.DEBUG.getGpuInfo().then((info) => (this.gpuInfo = info));
   }
 
   public connect(source: () => AuroraDebugData) {
     this.source = source;
+    this.tweak.register("settings", settingsPanel(source));
+    this.tweak.register("camera", cameraPanel(source));
+  }
+
+  public mood(post: PostDraw, light: LightDraw, urp: UrpDebugData) {
+    this.tweak.register("urp", urpPanel(urp));
+    this.tweak.register("mood", moodPanel(post, light));
+    this.tweak.register("effects", effectsPanel(post, urp));
+    this.tweak.register("catalog", catalogPanel(urp, () => this.source?.().materials() ?? []));
+  }
+  public texturePreview(preview: TexturePreview) {
+    return this.tweak.register("texturePreview", previewPanel(preview));
   }
 
   public watchDevice(device: GPUDevice, adapter: GPUAdapter) {
@@ -383,4 +422,6 @@ export const prodAurora: IAuroraModule = {
   watchClear: () => {},
   poolAcquire: () => {},
   poolRelease: () => {},
+  mood: () => {},
+  texturePreview: () => () => {},
 };

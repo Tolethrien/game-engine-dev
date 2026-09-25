@@ -33,7 +33,7 @@ export type SerializedValue =
 
 export interface LogSuppressed {
   count: number;
-  reason: "throttle" | "changed" | "once";
+  reason: "throttle" | "changed";
 }
 
 export type LogEntry =

@@ -325,16 +325,22 @@ export default class RenderGraph {
         if (DEPTH_FORMATS.has(write.desc.format)) continue;
         const writer = unread.get(write.name);
         if (writer !== undefined && write.loadOp === "clear") {
-          console.warn(
-            `"${write.name}" written by "${writer}" is never read before "${pass.name}" clears it`,
-          );
+          debug.log
+            .scope("aurora")
+            .once(`clear|${writer}|${write.name}|${pass.name}`)
+            .warn(
+              `"${write.name}" written by "${writer}" is never read before "${pass.name}" clears it`,
+            );
         }
         unread.set(write.name, pass.name);
       }
     }
 
     unread.forEach((writer, name) => {
-      console.warn(`"${name}" written by "${writer}" is never read this frame`);
+      debug.log
+        .scope("aurora")
+        .once(`unread|${writer}|${name}`)
+        .warn(`"${name}" written by "${writer}" is never read this frame`);
     });
   }
 

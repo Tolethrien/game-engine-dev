@@ -1,4 +1,12 @@
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import {
+  For,
+  Show,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  type Component,
+} from "solid-js";
 import AxiomMath from "@/core/axiom/math";
 import Panel from "./panel";
 import LayoutBar from "./layoutBar";
@@ -30,6 +38,7 @@ export default function Grid(props: {
   tabId: string;
   panels: PanelId[];
   empty?: string;
+  actions?: Component;
 }) {
   let container: HTMLDivElement | undefined;
   let grid: HTMLDivElement | undefined;
@@ -206,6 +215,7 @@ export default function Grid(props: {
         onMode={selectMode}
         onSort={(sort) => state().update({ sort })}
         onReset={reset}
+        actions={props.actions}
       />
       <div ref={container} class="min-h-0 flex-1 overflow-y-auto p-2">
         <Show

@@ -87,7 +87,7 @@ export class DevCommand implements ICommandModule {
         kind: "variable",
         name,
         hint: definition.hint ?? "",
-        options: definition.options?.map(formatLiteral) ?? null,
+        options: definition.options?.map((option) => formatLiteral(option)) ?? null,
       },
     });
   }
@@ -293,7 +293,7 @@ export class DevCommand implements ICommandModule {
         write: (value: unknown) => {
           if (variable.options && !variable.options.some((option) => Object.is(option, value)))
             throw new CommandError(
-              `${formatLiteral(value)} is not allowed for "${name}", use one of: ${variable.options.map(formatLiteral).join(", ")}`,
+              `${formatLiteral(value)} is not allowed for "${name}", use one of: ${variable.options.map((option) => formatLiteral(option)).join(", ")}`,
             );
           variable.set(value);
         },

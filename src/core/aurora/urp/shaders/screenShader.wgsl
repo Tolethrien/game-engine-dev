@@ -2,6 +2,11 @@
 @group(2) @binding(0) var offscreenCanvas: texture_2d<f32>;
 // canvas sized, read texel to texel
 @group(2) @binding(1) var gui: texture_2d<f32>;
+// mirrors ScreenPas.writeParams
+struct Screen {
+  invGamma: f32,
+};
+@group(2) @binding(2) var<uniform> screen: Screen;
 
 override linearColors: bool = true;
 
@@ -53,7 +58,8 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
     return vec4f(0.0);
   }
   // srgb encode is non-linear, so it runs on straight color, the canvas wants premultiplied back
-  let straight = min(color.rgb / color.a, vec3f(1.0));
+  // display calibration on the straight color, before the encode: black and white stay put
+  let straight = pow(min(color.rgb / color.a, vec3f(1.0)), vec3f(screen.invGamma));
   // after the encode: the noise must be one step of what the canvas stores
   let encoded = clamp(outputColor(straight) + dither(in.position.xy), vec3f(0.0), vec3f(1.0));
   return vec4f(encoded * color.a, color.a);

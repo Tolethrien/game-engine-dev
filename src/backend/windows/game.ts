@@ -4,6 +4,7 @@ import { registerWindowEventsIPC } from "../IPC/gameWindow";
 import { resetLogSession, watchGameWindow } from "../IPC/log";
 import { resetWatchSession } from "../IPC/watch";
 import { resetCommandSession } from "../IPC/command";
+import { resetTweakSession } from "../IPC/tweak";
 import { loadRenderer } from "./loader";
 import { sendToProfiler } from "./profiler";
 
@@ -40,11 +41,13 @@ export function createGameWindow() {
 function onDevServer() {
   // gameWindow.maximize();
   gameWindow.on("closed", () => app.quit());
-  gameWindow.webContents.on("before-input-event", (_event, input) => {
+  gameWindow.webContents.on("before-input-event", (event, input) => {
     if (input.control && input.key.toLowerCase() === "r") gameWindow.reload();
     if (input.control && input.shift && input.key.toLowerCase() === "i")
       gameWindow.webContents.toggleDevTools();
-    if (input.key === "F10") {
+    // the event fires for keyUp and auto-repeat too, which toggled fullscreen back and forth
+    if (input.key === "F10" && input.type === "keyDown" && !input.isAutoRepeat) {
+      event.preventDefault();
       gameWindow.setFullScreen(!gameWindow.isFullScreen());
     }
   });
@@ -58,5 +61,6 @@ function onDevServer() {
     resetLogSession();
     resetWatchSession();
     resetCommandSession();
+    resetTweakSession();
   });
 }

@@ -1,3 +1,4 @@
+import { debug } from "@debug";
 import Aurora from "../core";
 import DistanceField, { GlyphField } from "./distanceField";
 
@@ -27,7 +28,7 @@ export default class GlyphAtlas {
   public readonly spread: number;
   private shelves: Shelf[] = [];
   private pageBottom: number[];
-  private warned = false;
+  private readonly fullWarning = debug.log.scope("auroraAssets").once();
 
   constructor(
     texture: GPUTexture,
@@ -119,12 +120,9 @@ export default class GlyphAtlas {
     }
     if (best) return this.place(best, w);
 
-    if (!this.warned) {
-      this.warned = true;
-      console.warn(
-        `Glyph atlas is full (${this.pages} pages of ${this.pageSize}px), new glyphs use the fallback, raise fontAtlas.pages in config`,
-      );
-    }
+    this.fullWarning.warn(
+      `Glyph atlas is full (${this.pages} pages of ${this.pageSize}px), new glyphs use the fallback, raise fontAtlas.pages in config`,
+    );
     return null;
   }
 

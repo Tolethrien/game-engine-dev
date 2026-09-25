@@ -19,6 +19,7 @@ type LightCommand = "point" | "rect" | "ellipse" | "setAmbient";
 type PostCommand =
   | "setBloom"
   | "setDiffusion"
+  | "setBlur"
   | "setEffects"
   | "setExposure"
   | "setToneMapping"

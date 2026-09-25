@@ -6,6 +6,7 @@ import {
 } from "@aurora/pass";
 import PassBinds, { PassBindEntries } from "@aurora/passBinds";
 import FullScreenQuad from "@aurora/utils/fullScreenQuad/fullScreen";
+import { lightDraw } from "../draw/drawLight";
 import lightCompositeShader from "../shaders/lightCompositeShader.wgsl?raw";
 
 const COMPOSITE_BINDS = {
@@ -20,6 +21,9 @@ export default class LightCompositePass extends RenderPass {
   declare private pipeline: GPURenderPipeline;
   declare private binds: PassBinds<typeof COMPOSITE_BINDS>;
 
+  enabled() {
+    return lightDraw.getEnabled;
+  }
   async setup(targets: PassTargets) {
     this.binds = new PassBinds("lightComposite", COMPOSITE_BINDS);
     this.pipeline = await FullScreenQuad.createPipeline(targets, {

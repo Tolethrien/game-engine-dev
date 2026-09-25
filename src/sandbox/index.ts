@@ -116,9 +116,9 @@ function update() {
 
   // base scene for the post effects, always on
   isoWorldTest(t);
-  dayNightTest();
-  diffusionTest();
-  screenEffectsTest();
+  // dayNightTest();
+  // diffusionTest();
+  // screenEffectsTest();
 
   // lightsTest(t);
   // ledTest(t);

@@ -1,4 +1,5 @@
-import { For } from "solid-js";
+import { For, Show, type Component } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import type { LayoutMode, LayoutSort } from "./layouts";
 import type { TabLayout } from "./layoutState";
 
@@ -51,6 +52,7 @@ export default function LayoutBar(props: {
   onMode: (mode: LayoutMode) => void;
   onSort: (sort: LayoutSort) => void;
   onReset: () => void;
+  actions?: Component;
 }) {
   const manual = () => props.layout.mode === "manual";
 
@@ -69,8 +71,11 @@ export default function LayoutBar(props: {
         disabled={manual()}
         onChange={props.onSort}
       />
+      <div class="ml-auto flex items-center gap-2">
+        <Show when={props.actions}>{(actions) => <Dynamic component={actions()} />}</Show>
+      </div>
       <button
-        class="ml-auto cursor-pointer rounded border border-divider px-2 py-0.5 text-fg-dim not-disabled:hover:text-fg disabled:cursor-default disabled:opacity-40"
+        class="cursor-pointer rounded border border-divider px-2 py-0.5 text-fg-dim not-disabled:hover:text-fg disabled:cursor-default disabled:opacity-40"
         disabled={!manual()}
         onClick={() => props.onReset()}
       >

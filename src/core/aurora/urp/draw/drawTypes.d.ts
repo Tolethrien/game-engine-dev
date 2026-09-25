@@ -158,6 +158,8 @@ export interface GuiChar extends CharBase, Shadowed {}
 
 // light: added over the ambient into the light map, the world is multiplied by it
 export interface AmbientLight {
+  // off: the light map stays white, the composite leaves the frame and lights are not recorded
+  enabled: boolean;
   // gradient from -> to, equal colors = flat ambient
   from: RGBA;
   to: RGBA;
@@ -296,6 +298,20 @@ export interface FilmGrain {
   response: number;
   // grain in render pixels
   size: number;
+}
+// gaussian blur of the world before the post lut, the gui stays sharp; off while sigma or amount is 0
+export interface SceneBlur {
+  // render pixels
+  sigma: number;
+  // 0..1 mix of the blurred scene
+  amount: number;
+  // vignette = sharp middle, blurred edges
+  mask: EffectMask;
+  // vignette mask only, like Post.setVignette: how far in it reaches, falloff, shape, center
+  reach: number;
+  smoothness: number;
+  roundness: number;
+  center: Position2D;
 }
 export interface BloomProps {
   enabled: boolean;

@@ -16,7 +16,7 @@ import { SCREEN_BLEND } from "./postPass";
 import type { EffectMask, EffectStage } from "../draw/drawTypes";
 
 // must match MASK_* in effects/effectShader.wgsl
-const EFFECT_MASK = Object.freeze({
+export const EFFECT_MASK = Object.freeze({
   full: 0,
   vignette: 1,
 } satisfies Record<EffectMask, number>);

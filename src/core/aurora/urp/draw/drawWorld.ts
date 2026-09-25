@@ -99,8 +99,7 @@ export class WorldDraw extends BaseDraw<WorldWriter> {
   }
   protected acceptsGlyph(glyph: Glyph) {
     if (glyph.field === "mtsdf") return true;
-    this.warnOnce(
-      "font",
+    this.warnings.once("font").warn(
       "Draw: world text needs an mtsdf font, bitmap and dynamic fonts are for DrawGui only",
     );
     return false;

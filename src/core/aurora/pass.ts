@@ -105,14 +105,22 @@ export class PassResources {
   public reserved: string[] = [];
   public samplerName: SamplerName = "nearestClamp";
   private readonly passName: string;
-  private readonly created: ReadonlyMap<string, { desc: TextureDescriptor }>;
+  private readonly earlierWrites: ReadonlyMap<
+    string,
+    { desc: TextureDescriptor }
+  >;
 
   constructor(
     passName: string,
-    created: ReadonlyMap<string, { desc: TextureDescriptor }>,
+    earlierWrites: ReadonlyMap<string, { desc: TextureDescriptor }>,
   ) {
     this.passName = passName;
-    this.created = created;
+    this.earlierWrites = earlierWrites;
+  }
+
+  // lets a pass skip a read that would fail validation
+  public created(name: string) {
+    return this.earlierWrites.has(name);
   }
 
   public readAsset(name: AssetName) {
@@ -155,7 +163,7 @@ export class PassResources {
     });
   }
   public write(name: string) {
-    const created = this.created.get(name);
+    const created = this.earlierWrites.get(name);
     assert(
       created !== undefined,
       `Pass "${this.passName}" writes "${name}", but no earlier pass in preset creates it`,
@@ -264,6 +272,13 @@ export class PassContext {
       `Pass reads reserved "${name}" without declaring readReserved() in resources()`,
     );
     return ResourcePool.reservedView(name, mip);
+  }
+  public reservedArrayView(name: string) {
+    assert(
+      this.declared.reserved.includes(name),
+      `Pass reads reserved "${name}" without declaring readReserved() in resources()`,
+    );
+    return ResourcePool.reservedArrayView(name);
   }
   public asset(name: AssetName) {
     assert(

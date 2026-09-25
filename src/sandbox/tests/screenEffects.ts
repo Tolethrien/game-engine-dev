@@ -1,7 +1,13 @@
 import { DrawGui, Post } from "@/core/aurora/urp/draw/draw";
 import ScreenEffect from "@aurora/urp/effects/screenEffect";
-import type { EffectLayer, EffectStage } from "@aurora/urp/draw/drawTypes";
+import type {
+  EffectLayer,
+  EffectStage,
+  SceneBlur,
+} from "@aurora/urp/draw/drawTypes";
 import Aurora from "@aurora/core";
+import Time from "@/core/engine/time";
+import { BLUR_DEFAULTS } from "@aurora/urp/draw/drawPost";
 import InputManager from "@/core/engine/inputManager";
 import { KEY } from "@/core/engine/keys";
 import { COLOR } from "@axiom/color";
@@ -25,6 +31,9 @@ interface EffectsPreset {
   label: string;
   stage: EffectStage;
   layers: EffectLayer[];
+  blur?: Partial<SceneBlur>;
+  // sigma swings between 0 and blur.sigma, shows level changes of the pyramid
+  pulse?: boolean;
 }
 const PRESETS: EffectsPreset[] = [
   { label: "off", stage: "screen", layers: [] },
@@ -77,7 +86,59 @@ const PRESETS: EffectsPreset[] = [
       },
     ],
   },
+  {
+    label: "blur: soft (sigma 3)",
+    stage: "screen",
+    layers: [],
+    blur: { sigma: 3 },
+  },
+  {
+    label: "blur: pause menu (sigma 24)",
+    stage: "screen",
+    layers: [],
+    blur: { sigma: 24 },
+  },
+  {
+    label: "blur: heavy (sigma 80)",
+    stage: "screen",
+    layers: [],
+    blur: { sigma: 80 },
+  },
+  {
+    label: "blur: half mixed (sigma 40, amount 0.5)",
+    stage: "screen",
+    layers: [],
+    blur: { sigma: 40, amount: 0.5 },
+  },
+  {
+    label: "blur: edges (vignette mask)",
+    stage: "screen",
+    layers: [],
+    blur: { sigma: 16, mask: "vignette", reach: 1.2, smoothness: 0.6 },
+  },
+  {
+    label: "blur: pulsing 0..40",
+    stage: "screen",
+    layers: [],
+    blur: { sigma: 40 },
+    pulse: true,
+  },
+  {
+    label: "blur + mist at the edges",
+    stage: "screen",
+    layers: [
+      {
+        effect: screenMist,
+        mask: "vignette",
+        reach: 1.1,
+        smoothness: 0.6,
+        color: MIST_COLOR,
+      },
+    ],
+    blur: { sigma: 10, mask: "vignette", reach: 1.1, smoothness: 0.6 },
+  },
 ];
+const BLUR_PULSE_SECONDS = 4;
 // three lines above the bottom, under it sit the diffusion and day labels
 const SCREEN_EFFECTS_TEST = {
   key: KEY.v,
@@ -97,6 +158,17 @@ export function screenEffectsTest() {
     const preset = PRESETS[current];
     for (const stage of STAGES) Post.setEffects(stage, []);
     Post.setEffects(preset.stage, preset.layers);
+    // from the defaults, so values of the preset before do not leak
+    Post.setBlur({ ...BLUR_DEFAULTS, ...preset.blur });
+    Post.setColor({ contrast: 2, saturation: 0.2 });
+    Post.setToneMapping("agx");
+    Post.setAgxLook("punchy");
+    Post.setGrain({ intensity: 1 });
+  }
+  const preset = PRESETS[current];
+  if (preset.pulse && preset.blur?.sigma) {
+    const phase = (Time.getTimeInSeconds() / BLUR_PULSE_SECONDS) * Math.PI * 2;
+    Post.setBlur({ sigma: preset.blur.sigma * (0.5 - 0.5 * Math.cos(phase)) });
   }
   const { size, margin, lines, lineGap } = SCREEN_EFFECTS_TEST;
   DrawGui.text({
@@ -105,7 +177,7 @@ export function screenEffectsTest() {
       y: Aurora.canvas.height - margin - size - lines * lineGap,
     },
     font: SCREEN_EFFECTS_TEST.font,
-    text: `screen effects: ${PRESETS[current].label}  (V)`,
+    text: `screen effects: ${preset.label}  (V)`,
     size,
     color: COLOR.WHITE,
   });

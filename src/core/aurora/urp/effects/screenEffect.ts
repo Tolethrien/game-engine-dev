@@ -9,6 +9,8 @@ export interface ScreenEffectOptions<Name extends string> {
   fragment: string;
   // names with defaults, key order is the slot in the shader: in.params.x, y, z, w
   params?: Record<Name, number>;
+  // slider range of a param in the debugger, nothing else reads it
+  ranges?: Partial<Record<Name, [number, number]>>;
 }
 
 // a full screen shader of the game, run per pixel by an EffectPass stage through Post.setEffects;
@@ -21,10 +23,11 @@ export default class ScreenEffect<Name extends string = string> {
   public readonly fragment: string;
   public readonly paramNames: readonly Name[];
   public readonly defaults: MaterialParams;
+  public readonly ranges: readonly ([number, number] | null)[];
 
   private constructor(
     id: number,
-    { name, fragment, params }: ScreenEffectOptions<Name>,
+    { name, fragment, params, ranges }: ScreenEffectOptions<Name>,
   ) {
     this.id = id;
     this.name = name;
@@ -37,6 +40,7 @@ export default class ScreenEffect<Name extends string = string> {
     const defaults: MaterialParams = [0, 0, 0, 0];
     this.paramNames.forEach((param, slot) => (defaults[slot] = params![param]));
     this.defaults = defaults;
+    this.ranges = this.paramNames.map((param) => ranges?.[param] ?? null);
   }
 
   // every stage builds a pipeline per registered effect, so one made after the start rebuilds
@@ -55,6 +59,15 @@ export default class ScreenEffect<Name extends string = string> {
 
   public static get getAll(): readonly ScreenEffect[] {
     return this.registry;
+  }
+
+  public static get(name: string): ScreenEffect {
+    const effect = this.registry.find((entry) => entry.name === name);
+    assert(
+      effect !== undefined,
+      `Screen effect "${name}" does not exist, available: ${this.registry.map((entry) => entry.name).join(", ") || "none"}`,
+    );
+    return effect;
   }
 
   // a new array each call: pack once and keep it, or change its slots in place

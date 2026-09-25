@@ -78,6 +78,42 @@ Na prodzie `prodAurora` ma puste `connect`/`endFrame`, więc gettery Aurory zost
 
 ---
 
+## `debug.tweak` i `aurora.config()`
+
+`debug.tweak.register(name, panel)` rejestruje panel (sekcje pól ze schemą + `get`/`set`) i komendę konsoli o tej samej nazwie; jej wywołanie otwiera w profilerze modal z suwakami i kontrolkami. Zmiany idą do gry na żywo (stosowane w `endFrame`), **Revert** wraca do stanu z chwili otwarcia, **Export** daje kod ze wszystkimi ustawieniami sekcji.
+
+### Grupy paneli i okno ustawień
+
+- `TweakPanel.group` łączy panele w grupę, `order` ustala kolejność stron. Panele z grupą otwierają się w szufladzie (`tweak/groupWindow.tsx`) zamiast bocznego modala: lewa kolumna = strony grupy, szerokość przeciągana lewą krawędzią (min ~420 px), przycisk pełnego okna, ✕ / Escape zamykają. Nadal jeden otwarty panel naraz — strona = otwarty panel.
+- `command: false` — rejestracja bez komendy konsoli (panel otwiera kod).
+- `debug.tweak.open(name)` otwiera panel (nieznana nazwa → ostrzeżenie), `debug.tweak.openGroup(group)` ostatnio otwartą stronę grupy albo pierwszą wg `order`. Na produkcji puste.
+- Kontrolka `{ kind: "info" }`: tylko podgląd (tekst albo obiekt przez `formatLiteral`), pomijana w eksporcie, revercie i presetach.
+- Eksport grupy (`Export all` / `Export all changed` w nagłówku okna): eksporty stron po `order`, oddzielone pustą linią, strony `exportable: false` pominięte; czyta `get()`, nie wymaga otwarcia stron.
+- Input `TweakInput`: `open`, `openGroup`, `exportGroup`. Przycisk „⚙ Settings” w pasku layoutu zakładki Aurora (`TabDefinition.actions`) woła `openGroup("aurora")`; profiler pamięta ostatnią stronę grupy w `localStorage` (`tweak:group:<group>:page`).
+
+### Sekcje-listy (`arg: "list"`)
+
+Sekcja z tablicą elementów o polach zależnych od elementu (np. warstwy efektów): `TweakListSection` w `interfaces.d.ts`.
+
+- Strona gry: `item.fields(value)` (pola jednego elementu), `item.create()` (nowy element dla „+ add”; `null` = nie ma czego dodać, przycisk wyłączony), `item.label?(value)` (nagłówek karty, bez niego `#i`), `get()` → tablica, `set(items)` dostaje **zawsze całą nową listę** (żadnych łatek na indeksach), `defaults?` (lista równa im jest pomijana w „Export changed”), `format?(items)` (cała linia eksportu, np. `ScreenEffect.get("rain")` zamiast obiektu; bez niego `call(formatLiteral(items))`).
+- Do profilera idzie `TweakListSectionInfo`: `itemFields` (schema policzona per bieżący element), `itemLabels`, `addable`. Panel z listą przelicza schemę przy każdym pollu, niezależnie od `live`. Wartości sekcji = `{ items: [...] }`.
+- `TweakInput`: `listSet` (index, key, value), `listReset` (wartość klucza z `item.create()`), `listAdd`, `listRemove`, `listMove` (from, to), `listReplace` (cała lista; używa go wczytanie presetu). Każda operacja w grze: `structuredClone(get())` → zmiana → `set(items)`; indeks spoza listy = nic. Operacje strukturalne wymuszają poll w tej samej klatce, żeby profiler dostał nową schemę.
+- Kolejka inputów to segmenty: w segmencie zlewanie po `name/section/key` (`listSet` także po indeksie), operacja strukturalna (`add/remove/move/replace`) zamyka segment — nic za nią nie zlewa się z tym, co przed nią.
+- Revert i presety działają na całej tablicy. Pola `info` w elementach nie są wycinane (gra dostaje w `set` to, co zwróciła z `get`).
+- Profiler (`tweak/section.tsx`): nagłówek sekcji z licznikiem i „+ add”, elementy jako zwijane karty z ↑ ↓ ✕, pola tymi samymi `Control` co zwykłe sekcje; dwuklik w etykietę = `listReset`. Edytowane pole trzymane lokalnie po kluczu `section:index:key`. Zwinięcie kart w `localStorage` (`tweak:<panel>:<section>:<index>`). Dodanie/usunięcie/przesunięcie bez lokalnej zmiany — czeka na odpowiedź gry. Bez list zagnieżdżonych i przeciągania myszą.
+
+`aurora.config()` (konsola; `aurora.config("mood")` otwiera wybraną stronę) otwiera okno ustawień Aurory (grupa `aurora`). Strony w kolejności `AURORA_PAGES` (`modules/aurora/pages.ts`): `mood`, `effects`, `settings` (Rendering: `renderRes`/`canvasColor`/`gamma` przez `Aurora.setParameter`, odroczone do `beginFrame`; Config: podgląd), `camera` (`Aurora.setCamera`, gra ustawiająca kamerę co klatkę nadpisze edycję), `texturePreview`, `urp`, `catalog`. Panele rejestrują się bez komend (`command: false`); sekcja pól może mieć `format` (cała linia eksportu).
+
+Strona `effects` (`modules/aurora/effects.ts`) to trzy listy warstw `Post.setEffects`, po jednej na etap `world`/`hdr`/`screen`; parametry efektu jako pola `param:<nazwa>` (suwak z `ranges` efektu albo zwykła liczba), pola winiety tylko przy `mask: "vignette"`. Zmiana efektu w warstwie wraca do jego `defaults` (znacznik `paramsFor`). Eksport pomija wartości równe domyślnym, pusty etap w „Export all” daje `Post.setEffects("world", [])`. Strona `catalog` to podgląd zarejestrowanych `ScreenEffect` i `Material` (parametry, domyślne, zakresy); materiałów nie edytujemy. Obie rejestruje `debug.aurora.mood` razem z `mood`.
+
+Strona `urp` (`modules/aurora/urp.ts`) edytuje start configu `URP.init` na żywo: jedna sekcja „Sort” (`sortMode`, `sortAnchor`, `step`, `zRange`; bloom, tone mapping i włączanie światła są na żywo w `mood`), eksport to jedna linia `URP.init({...})`. Każda zmiana to ponowne `URP.init` + rebuild grafu, z bieżącym stanem `toneMapping`/`bloom`/ambientu z `Post`/`Light` (nastrój się nie cofa; te wartości edytuje `mood`). Pola liczbowe mają `apply: "release"` — `TweakField.apply` (`live` domyślnie) wysyła wartość dopiero po puszczeniu suwaka / blurze liczby. `debug.aurora.mood(post, light, urp)` dostaje `UrpDebugData` (`get`/`apply`, rejestr efektów `effects`/`effect`) z `URP.init`. Strony `settings` i `camera` rejestruje `debug.aurora.connect(source)` (edytują przez `source().setParameter`/`setCamera`), bo moduły debuggera nie importują wartości z silnika.
+
+Strona `mood` to pierwszy panel: tone mapping, AgX look, exposure, color, ambient, bloom, diffusion, blur, vignette, grain, chroma, radial blur, posterize. `URP.init` woła `debug.aurora.mood(postDraw, lightDraw)`, które go rejestruje. Wynik eksportu wklejamy **po** `URP.init` — init wpisuje bloom/tone mapping/exposure/look z configu i nadpisałby wcześniejsze wartości. Poza panelem: flash (warstwy `ScreenEffect` edytuje strona `effects`), światła punktowe.
+
+Strona `texturePreview` to drugi panel: wybór tekstury (`off` / grafu / asset / `reserved/…`), warstwy lub plastra 3d i mipa dla `PreviewPass`. Stronę rejestruje `setup` passa, więc istnieje tylko gdy `PreviewPass` jest w presecie. Zamknięcie modalu nie wyłącza podglądu (`off` tak). Panel używa dwóch pól `TweakPanel`: `live` (`sections` jako getter, schema przeliczana przy pollu otwartego modalu i wysyłana ponownie jako `add`, liczba sekcji stała) oraz `exportable: false` i `presets: false` (modal chowa Export, Revert i pasek presetów).
+
+---
+
 ## Okno profilera
 
 Osobne okno Electron (Solid.js), tworzone automatycznie przy starcie aplikacji **niespakowanej** (`!app.isPackaged`) albo ręcznie przez `window.openProfiler()`. Zawiera:

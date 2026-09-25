@@ -44,7 +44,9 @@ export default class SharedBinds {
   private static assetsBindGroups: Map<SamplerName, GPUBindGroup> = new Map();
   declare private static frameBuffer: GPUBuffer;
   declare private static cameraBuffer: GPUBuffer;
+  // as the game set it; the gpu copy always holds the top left corner, so shaders never branch on origin
   private static cameraData = new Float32Array([0, 0, 1, 0]);
+  private static cameraGpu = new Float32Array(4);
   private static frameData = new ArrayBuffer(40);
   private static frameFloats = new Float32Array(this.frameData);
   private static frameUints = new Uint32Array(this.frameData);
@@ -60,7 +62,7 @@ export default class SharedBinds {
     });
     this.cameraBuffer = Aurora.device.createBuffer({
       label: "cameraBuffer",
-      size: this.cameraData.byteLength,
+      size: this.cameraGpu.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.samplers.set(
@@ -137,6 +139,10 @@ export default class SharedBinds {
     }
     if (zoom !== undefined) this.cameraData[2] = zoom;
     if (rotation !== undefined) this.cameraData[3] = rotation;
+  }
+  public static get getCamera(): CameraData {
+    const [x, y, zoom, rotation] = this.cameraData;
+    return { position: { x, y }, zoom, rotation };
   }
   public static addGlobal(global: GlobalBinding) {
     assert(
@@ -236,6 +242,14 @@ export default class SharedBinds {
     this.frameUints[8] = this.frameIndex++;
 
     Aurora.device.queue.writeBuffer(this.frameBuffer, 0, this.frameData);
-    Aurora.device.queue.writeBuffer(this.cameraBuffer, 0, this.cameraData);
+    this.writeCamera(renderSize);
+    Aurora.device.queue.writeBuffer(this.cameraBuffer, 0, this.cameraGpu);
+  }
+  // the same floor as center in worldToPixel, so a centered camera lands on the same texel
+  private static writeCamera(renderSize: Size2D) {
+    this.cameraGpu.set(this.cameraData);
+    if (Aurora.getSettings.camera.origin !== "center") return;
+    this.cameraGpu[0] -= Math.floor(renderSize.width * 0.5);
+    this.cameraGpu[1] -= Math.floor(renderSize.height * 0.5);
   }
 }

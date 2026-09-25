@@ -83,6 +83,9 @@ export default class Aurora {
       }),
       materials: () => Material.getAll,
       preset: () => RenderGraph.getPreset,
+      setParameter: (props) => this.setParameter(props),
+      camera: () => this.getCamera,
+      setCamera: (camera) => this.setCamera(camera),
     }));
     this.canvasFormat = navigator.gpu.getPreferredCanvasFormat();
     ctx.configure({
@@ -157,6 +160,9 @@ export default class Aurora {
     SharedBinds.addGlobal(global);
     if (RenderGraph.isBuilt) void RenderGraph.rebuild();
   }
+  public static get getCamera(): CameraData {
+    return SharedBinds.getCamera;
+  }
   public static setCamera(camera: Partial<CameraData>) {
     SharedBinds.setCamera(camera);
   }
@@ -202,6 +208,7 @@ export default class Aurora {
       !RenderGraph.isBuilt,
       "Aurora.config() can only be called before the engine starts, use Aurora.setParameter() instead",
     );
+    this.assertGamma(props.rendering?.gamma);
     const config = deepMerge(structuredClone(BASE_CONFIG), props);
     this.settings = config;
     this.renderSize = this.parseRes(config.rendering.renderRes);
@@ -229,7 +236,14 @@ export default class Aurora {
     return { width, height };
   }
   public static setParameter(props: DeepPartial<ChangeableRenderConfig>) {
+    this.assertGamma(props.rendering?.gamma);
     this.pendingParameters = deepMerge(this.pendingParameters ?? {}, props);
+  }
+  private static assertGamma(gamma: number | undefined) {
+    assert(
+      gamma === undefined || gamma > 0,
+      `rendering.gamma must be above 0, got ${gamma}`,
+    );
   }
 
   public static createShader(label: string, code: string) {

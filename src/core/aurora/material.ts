@@ -77,6 +77,15 @@ export default class Material<Name extends string = string> {
     return this.registry;
   }
 
+  public static get(name: string): Material {
+    const material = this.registry.find((entry) => entry.name === name);
+    assert(
+      material !== undefined,
+      `Material "${name}" does not exist, available: ${this.registry.map((entry) => entry.name).join(", ") || "none"}`,
+    );
+    return material;
+  }
+
   // a new array each call: pack once and keep it, not per draw in a hot loop
   public pack(values: MaterialValues<Name> = {}): MaterialParams {
     const params = [...this.defaults] as MaterialParams;
