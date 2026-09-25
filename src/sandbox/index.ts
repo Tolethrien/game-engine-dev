@@ -47,12 +47,14 @@ async function preload() {
     rendering: {
       transparentCanvas: false,
       canvasColor: COLOR.GRAY,
-      renderRes: "1920x1080",
+      renderRes: "1080p",
+      renderScale: 1,
       normalMaps: false,
       heightMaps: false,
       computeGroupSize: 16,
       colorSpace: "linear",
     },
+    camera: { viewHeight: 1080 },
 
     userTextures: [
       { name: "land", albedo: land },
@@ -91,7 +93,9 @@ async function preload() {
     // "none" | "reinhard" | "aces" | "filmic" | "agx"
     toneMapping: { mode: "none", exposure: 0, look: "none" },
     // live: Post.setBloom({...}), Post.setExposure(stops)
-    bloom: { enabled: false },
+    bloom: { enabled: true },
+    lighting: { enabled: true },
+    pixelSnap: "world",
   });
   FPSOverlay.setVisible(true);
 }

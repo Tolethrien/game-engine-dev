@@ -1,11 +1,12 @@
 import { assert, deepMerge } from "@axiom/utils";
+import AxiomMath from "@axiom/math";
 import Engine from "@engine/engine";
 import AssetManager from "./assetManager";
 import {
   AuroraConfig,
   BASE_CONFIG,
   ChangeableRenderConfig,
-  RenderRes,
+  RENDER,
 } from "./config";
 import type { PipelineTargets } from "./pass";
 import RenderGraph from "./renderGraph";
@@ -43,9 +44,9 @@ export default class Aurora {
   private static pendingCanvasSize: Size2D | null = null;
   declare private static canvasFormat: GPUTextureFormat;
   private static settings: AuroraConfig = structuredClone(BASE_CONFIG);
-  private static renderSize: Size2D = this.parseRes(
-    BASE_CONFIG.rendering.renderRes,
-  );
+  // both follow the canvas aspect, set in init and whenever the canvas or the quality changes
+  private static renderSize: Size2D = { width: 1, height: 1 };
+  private static viewSize: Size2D = { width: 1, height: 1 };
   private static pendingParameters: DeepPartial<ChangeableRenderConfig> | null =
     null;
 
@@ -87,6 +88,7 @@ export default class Aurora {
       camera: () => this.getCamera,
       setCamera: (camera) => this.setCamera(camera),
     }));
+    this.resolveSizes();
     this.canvasFormat = navigator.gpu.getPreferredCanvasFormat();
     ctx.configure({
       device: this.device,
@@ -108,6 +110,14 @@ export default class Aurora {
   }
   public static get getRenderSize() {
     return this.renderSize;
+  }
+  // world units the view shows at zoom 1
+  public static get getViewSize() {
+    return this.viewSize;
+  }
+  // render texels per world unit at zoom 1
+  public static get getRenderScale() {
+    return this.renderSize.height / this.settings.camera.viewHeight;
   }
   public static get getSettings(): DeepReadonly<AuroraConfig> {
     return this.settings;
@@ -166,10 +176,39 @@ export default class Aurora {
   public static setCamera(camera: Partial<CameraData>) {
     SharedBinds.setCamera(camera);
   }
+  // canvas pixels (mouse position) of a world point, through the camera without its texel snap
+  public static worldToScreen({ x, y }: Position2D): Position2D {
+    const camera = SharedBinds.getViewCamera;
+    let right = (x - camera.x) * camera.scale;
+    let down = (y - camera.y) * camera.scale;
+    if (camera.rotation !== 0) {
+      const cos = Math.cos(camera.rotation);
+      const sin = Math.sin(camera.rotation);
+      [right, down] = [right * cos - down * sin, right * sin + down * cos];
+    }
+    const render = this.renderSize;
+    return {
+      x: ((right + Math.floor(render.width / 2)) * this.canvas.width) / render.width,
+      y: ((down + Math.floor(render.height / 2)) * this.canvas.height) / render.height,
+    };
+  }
+  public static screenToWorld({ x, y }: Position2D): Position2D {
+    const camera = SharedBinds.getViewCamera;
+    const render = this.renderSize;
+    let right = (x * render.width) / this.canvas.width - Math.floor(render.width / 2);
+    let down = (y * render.height) / this.canvas.height - Math.floor(render.height / 2);
+    if (camera.rotation !== 0) {
+      const cos = Math.cos(camera.rotation);
+      const sin = Math.sin(camera.rotation);
+      [right, down] = [right * cos + down * sin, down * cos - right * sin];
+    }
+    return { x: right / camera.scale + camera.x, y: down / camera.scale + camera.y };
+  }
   public static beginFrame() {
     if (this.pendingCanvasSize !== null) {
       ResourcePool.clear("canvas");
       this.pendingCanvasSize = null;
+      if (this.resolveSizes()) ResourcePool.clear("render");
     }
 
     if (this.pendingParameters !== null) {
@@ -180,10 +219,11 @@ export default class Aurora {
       );
       this.pendingParameters = null;
 
-      if (this.settings.rendering.renderRes !== previous.rendering.renderRes) {
-        this.renderSize = this.parseRes(this.settings.rendering.renderRes);
-        ResourcePool.clear("render");
-      }
+      const { renderRes, renderScale } = this.settings.rendering;
+      const quality =
+        renderRes !== previous.rendering.renderRes ||
+        renderScale !== previous.rendering.renderScale;
+      if (quality && this.resolveSizes()) ResourcePool.clear("render");
 
       const color = this.settings.rendering.canvasColor;
       const previousColor = previous.rendering.canvasColor;
@@ -208,10 +248,14 @@ export default class Aurora {
       !RenderGraph.isBuilt,
       "Aurora.config() can only be called before the engine starts, use Aurora.setParameter() instead",
     );
-    this.assertGamma(props.rendering?.gamma);
+    this.assertParameters(props);
+    assert(
+      props.camera?.viewHeight === undefined || props.camera.viewHeight > 0,
+      `camera.viewHeight must be above 0, got ${props.camera?.viewHeight}`,
+    );
     const config = deepMerge(structuredClone(BASE_CONFIG), props);
     this.settings = config;
-    this.renderSize = this.parseRes(config.rendering.renderRes);
+    this.resolveSizes();
     this.context.configure({
       device: this.device,
       format: this.canvasFormat,
@@ -231,18 +275,46 @@ export default class Aurora {
     SharedBinds.buildAssets();
     this.configured = true;
   }
-  private static parseRes(res: RenderRes): Size2D {
-    const [width, height] = res.split("x").map(Number);
-    return { width, height };
+  // true when the render size changed; a minimized window keeps the last sizes
+  private static resolveSizes() {
+    const { width: canvasWidth, height: canvasHeight } = this.canvas;
+    if (canvasWidth === 0 || canvasHeight === 0) return false;
+    const aspect = canvasWidth / canvasHeight;
+    const { renderRes, renderScale } = this.settings.rendering;
+    const base =
+      renderRes === "native" ? canvasHeight : RENDER.heights[renderRes];
+    const limit = this.device.limits.maxTextureDimension2D;
+    const height = Math.round(
+      AxiomMath.clamp(
+        base * renderScale,
+        RENDER.minHeight,
+        Math.min(limit, limit / aspect),
+      ),
+    );
+    const width = Math.max(Math.round(height * aspect), 1);
+    const viewHeight = this.settings.camera.viewHeight;
+    this.viewSize = { width: viewHeight * aspect, height: viewHeight };
+    if (width === this.renderSize.width && height === this.renderSize.height)
+      return false;
+    this.renderSize = { width, height };
+    return true;
   }
   public static setParameter(props: DeepPartial<ChangeableRenderConfig>) {
-    this.assertGamma(props.rendering?.gamma);
+    this.assertParameters(props);
     this.pendingParameters = deepMerge(this.pendingParameters ?? {}, props);
   }
-  private static assertGamma(gamma: number | undefined) {
+  private static assertParameters(
+    props: DeepPartial<ChangeableRenderConfig>,
+  ) {
+    const { gamma, renderScale } = props.rendering ?? {};
     assert(
       gamma === undefined || gamma > 0,
       `rendering.gamma must be above 0, got ${gamma}`,
+    );
+    assert(
+      renderScale === undefined ||
+        (renderScale >= RENDER.scale.min && renderScale <= RENDER.scale.max),
+      `rendering.renderScale must be ${RENDER.scale.min}..${RENDER.scale.max}, got ${renderScale}`,
     );
   }
 

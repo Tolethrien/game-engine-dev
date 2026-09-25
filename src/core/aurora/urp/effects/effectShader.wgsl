@@ -8,10 +8,13 @@ struct Frame {
   renderSize: vec2f,
   canvasSize: vec2f,
   frame: u32,
+  // render texels per world unit at zoom 1, Aurora.getRenderScale
+  renderScale: f32,
 };
+// must match ViewCamera in sharedBinds.ts: view center in world units, world units to render texels
 struct Camera {
-  position: vec2f,
-  zoom: f32,
+  center: vec2f,
+  scale: f32,
   rotation: f32,
 };
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -47,8 +50,10 @@ const MASK_VIGNETTE: u32 = 1u;
 struct EffectInput {
   // 0..1 of the screen, top left is 0,0
   uv: vec2f,
-  // render pixels
+  // view pixels: world units at zoom 1 from the top left, the same at any render quality
   pixel: vec2f,
+  // render texels, for effects that must hit exact texels
+  texel: vec2f,
   // world units under the pixel, through the camera
   world: vec2f,
   // width / height
@@ -104,7 +109,7 @@ fn pixelToWorld(pixel: vec2f) -> vec2f {
     let s = sin(camera.rotation);
     relative = vec2f(relative.x * c + relative.y * s, -relative.x * s + relative.y * c);
   }
-  return relative / camera.zoom + camera.position + center;
+  return relative / camera.scale + camera.center;
 }
 // the shape of the built-in vignette (Unity's), reach instead of its intensity
 fn vignetteMask(uv: vec2f, aspect: f32) -> f32 {
@@ -133,7 +138,8 @@ fn fragmentMain(in: FullscreenOut) -> @location(0) vec4f {
   let straight = color.rgb / color.a;
   var input: EffectInput;
   input.uv = in.uv;
-  input.pixel = in.position.xy;
+  input.pixel = in.position.xy / frame.renderScale;
+  input.texel = in.position.xy;
   input.world = pixelToWorld(in.position.xy);
   input.aspect = aspect;
   input.mask = mask;

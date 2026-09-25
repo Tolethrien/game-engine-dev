@@ -296,12 +296,12 @@ export interface FilmGrain {
   intensity: number;
   // 0..1: how much bright areas hide the grain
   response: number;
-  // grain in render pixels
+  // grain cell in view pixels (world units at zoom 1), the same at any render quality
   size: number;
 }
 // gaussian blur of the world before the post lut, the gui stays sharp; off while sigma or amount is 0
 export interface SceneBlur {
-  // render pixels
+  // view pixels (world units at zoom 1), the same at any render quality
   sigma: number;
   // 0..1 mix of the blurred scene
   amount: number;

@@ -9,6 +9,7 @@ import FullScreenQuad from "@aurora/utils/fullScreenQuad/fullScreen";
 import ambientShader from "../shaders/ambientShader.wgsl?raw";
 import lightShader from "../shaders/lightShader.wgsl?raw";
 import { LIGHT_LAYOUT, LightWriter, lightDraw } from "../draw/drawLight";
+import type { PixelSnap } from "../urp";
 
 const LIGHT_BINDS = {
   ambient: { binding: 0, type: "uniform" },
@@ -39,6 +40,12 @@ export default class LightPass extends RenderPass {
   };
   declare private binds: PassBinds<typeof LIGHT_BINDS>;
   declare private ambientUniform: FixedBuffer;
+  private readonly pixelSnap: PixelSnap;
+
+  constructor(pixelSnap: PixelSnap) {
+    super();
+    this.pixelSnap = pixelSnap;
+  }
 
   destroy() {
     this.ambientUniform.destroy();
@@ -74,7 +81,10 @@ export default class LightPass extends RenderPass {
         shader: lightShader,
         buffers: [LIGHT_LAYOUT.layout],
         blend: Blend.additivePremultiplied,
-        constants: { linearColors: Aurora.isLinear },
+        constants: {
+          linearColors: Aurora.isLinear,
+          pixelSnap: this.pixelSnap === "world",
+        },
       }),
     ]);
     this.pipelines = { ambient, lights };

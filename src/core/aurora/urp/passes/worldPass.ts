@@ -12,7 +12,7 @@ import { worldDraw } from "../draw/drawWorld";
 import { WORLD_LAYOUT, WorldWriter } from "../draw/drawInternal";
 import { DEFAULT_MATERIAL } from "../draw/materials";
 import Material from "../../material";
-import type { SortProps } from "../urp";
+import type { PixelSnap, SortProps } from "../urp";
 import AxiomMath from "@/core/axiom/math";
 import PassBinds, { PassBindEntries } from "../../passBinds";
 import FixedBuffer from "../../utils/fixedBuffer";
@@ -66,6 +66,7 @@ export default class WorldPass extends RenderPass {
   declare private opaqueBatches: (OpaqueBatch | null)[];
   private writer = WORLD_LAYOUT.createWriter(this.vertexBuffer);
   declare private sorter: SortProps & SorterFrameProps;
+  private readonly pixelSnap: PixelSnap;
   declare private sortUniform: FixedBuffer;
   declare private binds: PassBinds<typeof WORLD_BINDS>;
   private clips = new ClipBuffer("worldPassClips");
@@ -76,8 +77,9 @@ export default class WorldPass extends RenderPass {
     count: Float32Array;
     weight: Float32Array;
   };
-  constructor(props: SortProps) {
+  constructor(props: SortProps & { pixelSnap: PixelSnap }) {
     super();
+    this.pixelSnap = props.pixelSnap;
     this.sorter = {
       ...props,
       sortAxes: this.sortAxes(props.sortMode),
@@ -208,7 +210,8 @@ export default class WorldPass extends RenderPass {
       { clear: true, depthClearValue: 1 },
     );
 
-    res.sampler("nearestClamp");
+    // linear for the sharp bilinear sprite filter in drawWorldShader.wgsl, mips when zoomed out
+    res.sampler("trilinearClamp");
   }
   clearFrame() {
     this.vertexBuffer.clear();
@@ -275,6 +278,7 @@ export default class WorldPass extends RenderPass {
       linearColors: Aurora.isLinear,
       depthSort: sorting,
       emissive: material.emissive,
+      pixelSnap: this.pixelSnap === "world",
     };
     const [opaque, transparent] = await Promise.all([
       this.opaqueBatches[material.id]

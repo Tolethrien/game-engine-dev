@@ -28,10 +28,8 @@ function leftSections(state: AuroraState): Section[] {
         ? { key, value, color: cssColor(value) }
         : { key, value },
   );
-  // renderRes already names the size unless something resized the render target
-  if (config.rendering.renderRes !== renderSize.replace("×", "x"))
-    rendering.push({ key: "render size", value: renderSize });
   rendering.push(
+    { key: "render size", value: renderSize },
     { key: "canvas", value: size(config.canvas) },
     { key: "canvas format", value: config.canvas.format },
   );

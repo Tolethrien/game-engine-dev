@@ -13,7 +13,7 @@ import bloomShader from "../shaders/bloomShader.wgsl?raw";
 import { postDraw } from "../draw/drawPost";
 import AxiomMath from "@axiom/math";
 
-// mip 0 is half the render, each level halves it again; 8 still fits the smallest renderRes (640x360)
+// mip 0 is half the render, each level halves it again; 8 still fit RENDER.minHeight
 const BLOOM = Object.freeze({ temp: "bloom", levels: 8 });
 const BLOOM_BINDS = {
   source: { binding: 0, type: "texture" },

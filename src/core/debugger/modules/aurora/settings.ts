@@ -1,4 +1,4 @@
-import { RENDER_RES } from "@/core/aurora/config";
+import { RENDER } from "@/core/aurora/config";
 import type { TweakField } from "../tweak/report";
 import type { AuroraDebugData, TweakFieldsSection, TweakPanel } from "../../interfaces";
 import { formatLiteral } from "../command/parse";
@@ -16,14 +16,20 @@ function renderingSection(source: () => AuroraDebugData): TweakFieldsSection {
     call: "Aurora.setParameter",
     arg: "object",
     fields: [
-      { key: "renderRes", control: { kind: "select", options: RENDER_RES } },
+      { key: "renderRes", control: { kind: "select", options: RENDER.resolutions } },
+      {
+        key: "renderScale",
+        control: { kind: "slider", ...RENDER.scale, step: 0.05 },
+        // every step reallocates the render sized textures
+        apply: "release",
+      },
       { key: "canvasColor", control: { kind: "color" } },
       { key: "gamma", control: { kind: "slider", min: 0.5, max: 2, step: 0.01 } },
     ],
     // setParameter is deferred to beginFrame, so a new value shows up one poll later
     get() {
-      const { renderRes, canvasColor, gamma } = source().settings().rendering;
-      return { renderRes, canvasColor: [...canvasColor], gamma };
+      const { renderRes, renderScale, canvasColor, gamma } = source().settings().rendering;
+      return { renderRes, renderScale, canvasColor: [...canvasColor], gamma };
     },
     set: (values) => source().setParameter({ rendering: values }),
     format: (values) => `Aurora.setParameter({ rendering: ${formatLiteral(values)} })`,
@@ -41,6 +47,8 @@ function configSection(source: () => AuroraDebugData): TweakFieldsSection {
       info("normalMaps"),
       info("heightMaps"),
       info("computeGroupSize"),
+      info("renderSize", "render size"),
+      info("viewHeight", "view height"),
       info("cameraOrigin", "camera origin"),
       info("fontAtlas"),
       info("textures"),
@@ -56,6 +64,8 @@ function configSection(source: () => AuroraDebugData): TweakFieldsSection {
         normalMaps: rendering.normalMaps,
         heightMaps: rendering.heightMaps,
         computeGroupSize: rendering.computeGroupSize,
+        renderSize: `${source().renderSize().width}×${source().renderSize().height}`,
+        viewHeight: settings.camera.viewHeight,
         cameraOrigin: settings.camera.origin,
         fontAtlas: `${fontAtlas.pageSize}×${fontAtlas.pageSize} × ${fontAtlas.pages} pages, spread ${fontAtlas.spread}`,
         textures: settings.userTextures.length,

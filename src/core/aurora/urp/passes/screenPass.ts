@@ -21,7 +21,13 @@ export default class ScreenPas extends RenderPass {
   declare private pipeline: GPURenderPipeline;
   declare private binds: PassBinds<typeof BINDS>;
   declare private uniform: FixedBuffer;
-  private writtenGamma = NaN;
+  private readonly written = {
+    gamma: NaN,
+    renderWidth: 0,
+    renderHeight: 0,
+    canvasWidth: 0,
+    canvasHeight: 0,
+  };
 
   async setup(targets: PassTargets) {
     this.binds = new PassBinds("present", BINDS);
@@ -60,12 +66,29 @@ export default class ScreenPas extends RenderPass {
     );
     encoder.draw(6);
   }
-  // read every frame, so Aurora.setParameter({ rendering: { gamma } }) needs no rebuild
+  // read every frame, so gamma and the render quality change without a rebuild
   private writeParams() {
     const gamma = Aurora.getSettings.rendering.gamma;
-    if (gamma === this.writtenGamma) return;
-    this.writtenGamma = gamma;
-    this.uniform.floats[0] = 1 / gamma;
+    const render = Aurora.getRenderSize;
+    const canvas = Aurora.canvas;
+    const written = this.written;
+    if (
+      gamma === written.gamma &&
+      render.width === written.renderWidth &&
+      render.height === written.renderHeight &&
+      canvas.width === written.canvasWidth &&
+      canvas.height === written.canvasHeight
+    )
+      return;
+    written.gamma = gamma;
+    written.renderWidth = render.width;
+    written.renderHeight = render.height;
+    written.canvasWidth = canvas.width;
+    written.canvasHeight = canvas.height;
+    const floats = this.uniform.floats;
+    floats[0] = 1 / gamma;
+    floats[2] = render.width / canvas.width;
+    floats[3] = render.height / canvas.height;
     this.uniform.upload();
   }
 }

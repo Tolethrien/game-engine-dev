@@ -29,12 +29,26 @@ function resizeEvents() {
   });
   gameWindow.on("maximize", sendSize);
   gameWindow.on("unmaximize", sendSize);
+  // the event names the state: isFullScreen() can still report the old one during the animation
+  const sendFullScreen = (on: boolean) =>
+    gameWindow.webContents.send("window-full-screen-changed", on);
   //full screen have animation before change, need to wait and let debounce handle time before change
-  gameWindow.on("enter-full-screen", () => setTimeout(sendSize, 0));
-  gameWindow.on("leave-full-screen", () => setTimeout(sendSize, 0));
+  gameWindow.on("enter-full-screen", () => {
+    setTimeout(sendSize, 0);
+    sendFullScreen(true);
+  });
+  gameWindow.on("leave-full-screen", () => {
+    setTimeout(sendSize, 0);
+    sendFullScreen(false);
+  });
   ipcMain.on("set-full-screen", (_, bool: boolean) =>
     gameWindow.setFullScreen(bool),
   );
+  // decided here like F10, the renderer's copy of the state may lag behind
+  ipcMain.on("toggle-full-screen", () =>
+    gameWindow.setFullScreen(!gameWindow.isFullScreen()),
+  );
+  ipcMain.handle("is-full-screen", () => gameWindow.isFullScreen());
 }
 
 function focusEvents() {

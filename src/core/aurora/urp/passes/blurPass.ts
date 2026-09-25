@@ -1,3 +1,4 @@
+import Aurora from "@aurora/core";
 import {
   MultiPass,
   MultiPassContext,
@@ -169,7 +170,9 @@ export default class BlurPass extends MultiPass {
   // the scene directly), and writes the gaussian that fills in the rest, in that level's texels
   private writeParams() {
     const blur = postDraw.getBlur;
-    const variance = blur.sigma * blur.sigma;
+    // sigma is in view pixels, the pyramid works in render texels
+    const sigma = blur.sigma * Aurora.getRenderScale;
+    const variance = sigma * sigma;
     let level = -1;
     while (level + 1 < BLUR.levels && LEVEL_VARIANCE[level + 1] <= variance) {
       level++;

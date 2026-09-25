@@ -12,6 +12,7 @@ import FontCanvas from "./text/fontCanvas";
 import KerningTable from "./text/kerning";
 import GlyphAtlas from "./text/glyphAtlas";
 import type { FontAtlasConfig } from "./config";
+import AlbedoBake from "./utils/albedoBake/albedoBake";
 import fallbackFontUrl from "./assets/fallbackFont.png";
 
 export type AssetName = "albedo" | "normal" | "height" | "ui" | "fonts";
@@ -146,13 +147,15 @@ export default class AssetManager {
     }
 
     const textures: Map<AssetName, GPUTexture> = new Map();
-    const albedoArr = this.buildArray(
-      "albedo",
-      Aurora.isLinear ? FORMAT.albedoLinear : FORMAT.albedoGamma,
-      NEUTRAL.albedo,
-      albedoBitmaps,
-      layerWidth,
-      layerHeight,
+    const albedoArr = await AlbedoBake.bake(
+      this.buildArray(
+        "albedo",
+        Aurora.isLinear ? FORMAT.albedoLinear : FORMAT.albedoGamma,
+        NEUTRAL.albedo,
+        albedoBitmaps,
+        layerWidth,
+        layerHeight,
+      ),
     );
     textures.set("albedo", albedoArr);
     if (normalMaps) {

@@ -8,14 +8,17 @@ struct Frame {
   canvasSize: vec2f,
   frame: u32,
 };
+// must match ViewCamera in sharedBinds.ts: view center in world units, world units to render texels
 struct Camera {
-  position: vec2f,
-  zoom: f32,
+  center: vec2f,
+  scale: f32,
   rotation: f32,
 };
 @group(0) @binding(0) var<uniform> frame: Frame;
 @group(0) @binding(1) var<uniform> camera: Camera;
 override linearColors: bool = true;
+// must match pixelSnap in drawWorldShader.wgsl, or the light slides against the scene by a texel
+override pixelSnap: bool = true;
 
 // must match LightShape in draw/drawLight.ts
 const SHAPE_BOX: u32 = 0u;
@@ -47,11 +50,12 @@ struct VertexOut {
   @location(6) @interpolate(flat) corners: vec4f,
 };
 
-// anchor is snapped to whole render texels, offset is not
+// same transform as drawWorldShader.wgsl; a soft light needs no snapped anchor
 fn worldToPixel(anchor: vec2f, offset: vec2f) -> vec2f {
   let center = floor(frame.renderSize * 0.5);
-  let cam = floor((camera.position + center) * camera.zoom + 0.5);
-  let rel = floor(anchor * camera.zoom + 0.5) - cam + offset * camera.zoom;
+  let view = camera.center * camera.scale;
+  let cam = select(view, floor(view + 0.5), pixelSnap);
+  let rel = (anchor + offset) * camera.scale - cam;
   if (camera.rotation == 0.0) {
     return rel + center;
   }
@@ -89,7 +93,7 @@ fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> Vertex
   let corner = corners[index];
   let halfSize = instance.size * 0.5;
   // one render texel of margin, so a hard edge is not cut by the quad
-  let pad = 1.0 / camera.zoom;
+  let pad = 1.0 / camera.scale;
   let local = corner * (halfSize + pad);
   let c = cos(instance.rotation);
   let s = sin(instance.rotation);

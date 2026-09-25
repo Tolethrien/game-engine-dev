@@ -36,6 +36,13 @@ const WINDOW = {
       callback(bool),
     ),
   setFullScreen: (bool: boolean) => ipcRenderer.send("set-full-screen", bool),
+  toggleFullScreen: () => ipcRenderer.send("toggle-full-screen"),
+  isFullScreen: async () =>
+    (await ipcRenderer.invoke("is-full-screen")) as boolean,
+  onFullScreenChanged: (callback: (bool: boolean) => void) =>
+    ipcRenderer.on("window-full-screen-changed", (_, bool: boolean) =>
+      callback(bool),
+    ),
   getRefreshRate: async () =>
     (await ipcRenderer.invoke("get-refresh-rate")) as number,
 };

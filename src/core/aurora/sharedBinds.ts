@@ -16,8 +16,19 @@ export interface CameraData {
   zoom: number;
   rotation: number;
 }
+// must match struct Camera in the world, light and effect shaders
+export interface ViewCamera {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+}
 export type SamplerName =
-  "nearestClamp" | "linearClamp" | "nearestRepeat" | "linearRepeat";
+  | "nearestClamp"
+  | "linearClamp"
+  | "trilinearClamp"
+  | "nearestRepeat"
+  | "linearRepeat";
 
 const ASSET_BINDINGS: Record<AssetName, number> = {
   albedo: 0,
@@ -44,8 +55,9 @@ export default class SharedBinds {
   private static assetsBindGroups: Map<SamplerName, GPUBindGroup> = new Map();
   declare private static frameBuffer: GPUBuffer;
   declare private static cameraBuffer: GPUBuffer;
-  // as the game set it; the gpu copy always holds the top left corner, so shaders never branch on origin
+  // as the game set it
   private static cameraData = new Float32Array([0, 0, 1, 0]);
+  private static viewCamera: ViewCamera = { x: 0, y: 0, scale: 1, rotation: 0 };
   private static cameraGpu = new Float32Array(4);
   private static frameData = new ArrayBuffer(40);
   private static frameFloats = new Float32Array(this.frameData);
@@ -75,6 +87,17 @@ export default class SharedBinds {
         label: "linearClamp",
         magFilter: "linear",
         minFilter: "linear",
+      }),
+    );
+    // blends mip levels too, for sprites drawn smaller than their texels; linearClamp keeps
+    // nearest mips, a fractional level there picks one level (backdrop pyramid)
+    this.samplers.set(
+      "trilinearClamp",
+      Aurora.device.createSampler({
+        label: "trilinearClamp",
+        magFilter: "linear",
+        minFilter: "linear",
+        mipmapFilter: "linear",
       }),
     );
     this.samplers.set(
@@ -240,16 +263,27 @@ export default class SharedBinds {
     this.frameFloats[6] = Aurora.canvas.width;
     this.frameFloats[7] = Aurora.canvas.height;
     this.frameUints[8] = this.frameIndex++;
+    this.frameFloats[9] = Aurora.getRenderScale;
 
     Aurora.device.queue.writeBuffer(this.frameBuffer, 0, this.frameData);
-    this.writeCamera(renderSize);
+    const camera = this.getViewCamera;
+    this.cameraGpu[0] = camera.x;
+    this.cameraGpu[1] = camera.y;
+    this.cameraGpu[2] = camera.scale;
+    this.cameraGpu[3] = camera.rotation;
     Aurora.device.queue.writeBuffer(this.cameraBuffer, 0, this.cameraGpu);
   }
-  // the same floor as center in worldToPixel, so a centered camera lands on the same texel
-  private static writeCamera(renderSize: Size2D) {
-    this.cameraGpu.set(this.cameraData);
-    if (Aurora.getSettings.camera.origin !== "center") return;
-    this.cameraGpu[0] -= Math.floor(renderSize.width * 0.5);
-    this.cameraGpu[1] -= Math.floor(renderSize.height * 0.5);
+  // the camera the shaders get: the view center in world units and world units to render
+  // texels, so they know neither the origin setting nor the render scale
+  public static get getViewCamera(): Readonly<ViewCamera> {
+    const [x, y, zoom, rotation] = this.cameraData;
+    const view = Aurora.getViewSize;
+    const topLeft = Aurora.getSettings.camera.origin !== "center";
+    const camera = this.viewCamera;
+    camera.x = topLeft ? x + view.width / 2 : x;
+    camera.y = topLeft ? y + view.height / 2 : y;
+    camera.scale = zoom * Aurora.getRenderScale;
+    camera.rotation = rotation;
+    return camera;
   }
 }

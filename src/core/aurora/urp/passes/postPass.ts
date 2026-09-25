@@ -215,7 +215,8 @@ export default class PostPass extends MultiPass {
     floats[23] = flash.amount;
     uints[24] = SCREEN_BLEND[vignette.blend];
     floats[25] = grain.response;
-    floats[26] = grain.size;
+    // view pixels to render texels, the grain keeps its look at any render quality
+    floats[26] = grain.size * Aurora.getRenderScale;
     post.upload();
     return post;
   }

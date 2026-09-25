@@ -12,6 +12,7 @@ export default class Engine {
   declare private static canvas: HTMLCanvasElement;
   declare private static context: GPUCanvasContext;
   private static update: (() => void) | null = null;
+  private static fullScreen = false;
   private static signals = {
     windowResize: new Signal<Size2D>(),
     engineInit: new Signal<boolean>(),
@@ -29,6 +30,7 @@ export default class Engine {
   }) {
     this.update = update ?? null;
     await this.setCanvas();
+    await this.watchFullScreen();
     InputManager.registerEvents();
     await Aurora.init(this.canvas);
     FPSOverlay.setGpuTimeSource(() => Aurora.getGpuTime);
@@ -42,6 +44,15 @@ export default class Engine {
   }
   public static get ctx() {
     return this.context;
+  }
+  public static get isFullScreen() {
+    return this.fullScreen;
+  }
+  public static setFullScreen(on: boolean) {
+    window.API.WINDOW.setFullScreen(on);
+  }
+  public static toggleFullScreen() {
+    window.API.WINDOW.toggleFullScreen();
   }
   private static loop(currentTime: number) {
     Time.update(currentTime);
@@ -62,12 +73,23 @@ export default class Engine {
 
     debug.performance.endFrame(Time.getFrameTime());
     debug.log.endFrame();
-    // before watch, so a changed value shows up in the same frame
     debug.command.endFrame();
     debug.tweak.endFrame();
     debug.watch.endFrame();
 
     requestAnimationFrame((currentTime) => this.loop(currentTime));
+  }
+
+  private static async watchFullScreen() {
+    this.fullScreen = await window.API.WINDOW.isFullScreen();
+    window.API.WINDOW.onFullScreenChanged((on) => (this.fullScreen = on));
+    const commands = Object.freeze({
+      fullscreen: (on?: boolean) =>
+        on === undefined ? this.toggleFullScreen() : this.setFullScreen(on),
+    });
+    debug.command.expose("window", () => commands, {
+      hint: "window.fullscreen(on?): full screen without a frame, toggles without an argument",
+    });
   }
 
   private static async setCanvas() {

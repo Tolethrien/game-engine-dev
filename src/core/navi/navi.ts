@@ -2,6 +2,7 @@ import Aurora from "@aurora/core";
 import { DrawGui as Draw } from "@aurora/urp/draw/draw";
 import AABB from "@axiom/AABB";
 import AxiomMath from "@axiom/math";
+import Engine from "@engine/engine";
 import InputManager from "@engine/inputManager";
 import { KEY_GROUP } from "@engine/keys";
 import Time from "@engine/time";
@@ -52,6 +53,7 @@ export default class Navi {
     this.root.tags.add("root");
     this.root.input = "none";
     this.resize();
+    Engine.events.windowResize.connect(() => this.resize());
   }
   public static updateSystem() {
     InputManager.suspendClaim();

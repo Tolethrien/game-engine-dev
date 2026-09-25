@@ -94,32 +94,32 @@ export function isoWorldTest(t: number) {
 }
 
 function drawTorch(torch: Torch, t: number) {
-  // const { flicker } = TORCH;
-  // // two sines at unrelated speeds read as a flame, one alone as a pulse
-  // const wobble =
-  //   Math.sin(t * flicker.speed + torch.phase) * 0.6 +
-  //   Math.sin(t * flicker.speed * 2.3 + torch.phase * 1.7) * 0.4;
-  // const brightness = 1 + wobble * flicker.amount;
-  // torch.params[0] = TORCH.glow * brightness;
-  // Draw.rect({
-  //   position: {
-  //     x: torch.base.x - TORCH.width / 2,
-  //     y: torch.base.y - TORCH.height,
-  //     z: 0,
-  //   },
-  //   size: { width: TORCH.width, height: TORCH.height },
-  //   color: TORCH.color,
-  //   material: EMISSIVE_MATERIAL,
-  //   params: torch.params,
-  //   sort: { x: torch.base.x, y: torch.base.y, z: 0 },
-  // });
-  // Light.point({
-  //   position: { x: torch.base.x, y: torch.base.y - TORCH.height / 2 },
-  //   radius: TORCH.light.radius,
-  //   color: TORCH.color,
-  //   intensity: TORCH.light.intensity * brightness,
-  //   falloff: TORCH.light.falloff,
-  // });
+  const { flicker } = TORCH;
+  // two sines at unrelated speeds read as a flame, one alone as a pulse
+  const wobble =
+    Math.sin(t * flicker.speed + torch.phase) * 0.6 +
+    Math.sin(t * flicker.speed * 2.3 + torch.phase * 1.7) * 0.4;
+  const brightness = 1 + wobble * flicker.amount;
+  torch.params[0] = TORCH.glow * brightness;
+  Draw.rect({
+    position: {
+      x: torch.base.x - TORCH.width / 2,
+      y: torch.base.y - TORCH.height,
+      z: 0,
+    },
+    size: { width: TORCH.width, height: TORCH.height },
+    color: TORCH.color,
+    material: EMISSIVE_MATERIAL,
+    params: torch.params,
+    sort: { x: torch.base.x, y: torch.base.y, z: 0 },
+  });
+  Light.point({
+    position: { x: torch.base.x, y: torch.base.y - TORCH.height / 2 },
+    radius: TORCH.light.radius,
+    color: TORCH.color,
+    intensity: TORCH.light.intensity * brightness,
+    falloff: TORCH.light.falloff,
+  });
 }
 
 function buildWorld() {
@@ -221,8 +221,8 @@ function moveCamera() {
     );
   }
 
-  // the shader zooms around position + half the render, so that point is the view center
-  const view = Aurora.getRenderSize;
+  // the shader zooms around position + half the view, so that point is the view center
+  const view = Aurora.getViewSize;
   Aurora.setCamera({
     position: {
       x: camera.center.x - view.width / 2,

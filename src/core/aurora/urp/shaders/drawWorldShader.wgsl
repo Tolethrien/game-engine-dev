@@ -11,9 +11,10 @@ struct Frame {
   canvasSize: vec2f,
   frame: u32,
 };
+// must match ViewCamera in sharedBinds.ts: view center in world units, world units to render texels
 struct Camera {
-  position: vec2f,
-  zoom: f32,
+  center: vec2f,
+  scale: f32,
   rotation: f32,
 };
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -55,6 +56,11 @@ override linearColors: bool = true;
 override depthSort: bool = false;
 // opaque pipeline: writes depth, so a pixel is either fully kept or dropped
 override opaquePass: bool = false;
+// must match URPProps.pixelSnap == "world" and pixelSnap in lightShader.wgsl
+override pixelSnap: bool = true;
+// an alpha tested edge thins out in the mips, averaged alpha drops under the cut;
+// raised per level so zoomed out tiles still meet and leaves keep their mass
+const MIP_ALPHA_SCALE: f32 = 0.25;
 // material ignores the light map, must match Material.emissive
 override emissive: bool = false;
 
@@ -147,11 +153,13 @@ fn textCoverage(coverage: f32, color: vec4f) -> f32 {
   return mix(dark, light, luma);
 }
 
-// anchor is snapped to whole render texels, offset is not
+// one transform for every shape, only the camera is snapped (to whole render texels):
+// an edge two shapes share in the world stays shared on screen at any zoom
 fn worldToPixel(anchor: vec2f, offset: vec2f) -> vec2f {
   let center = floor(frame.renderSize * 0.5);
-  let cam = floor((camera.position + center) * camera.zoom + 0.5);
-  let rel = floor(anchor * camera.zoom + 0.5) - cam + offset * camera.zoom;
+  let view = camera.center * camera.scale;
+  let cam = select(view, floor(view + 0.5), pixelSnap);
+  let rel = (anchor + offset) * camera.scale - cam;
   if (camera.rotation == 0.0) {
     return rel + center;
   }
@@ -169,9 +177,23 @@ fn sortDepth(point: vec3f) -> f32 {
   let key = dot(cell, sortParams.weight);
   return 1.0 - (key + 1.0) / (sortParams.total + 1.0);
 }
-// the anchor worldToPixel puts on screen, still in world units
+// whole world units are sprite texels: pixel art keeps its grid at any zoom
 fn snapAnchor(anchor: vec2f) -> vec2f {
-  return floor(anchor * camera.zoom + 0.5) / camera.zoom;
+  return select(anchor, floor(anchor + 0.5), pixelSnap);
+}
+// sharp bilinear, position in texels: flat inside a texel and a one pixel wide blend
+// across its edge, so a fractional zoom or position never repeats texels unevenly;
+// minifying (a texel under a pixel) falls back to plain bilinear on the mips
+fn sharpTexel(position: vec2f, texelsPerPixel: vec2f, uvRect: vec4f, lod: f32) -> vec2f {
+  let band = clamp(texelsPerPixel, vec2f(0.0001), vec2f(1.0));
+  let edge = floor(position + 0.5);
+  let sharp = edge + clamp((position - edge) / band, vec2f(-0.5), vec2f(0.5));
+  // half a texel of the sampled level inside the crop (flipped when zw is negative),
+  // or the filter reads the next sprite of the sheet
+  let low = min(uvRect.xy, uvRect.xy + uvRect.zw);
+  let high = max(uvRect.xy, uvRect.xy + uvRect.zw);
+  let inset = min(vec2f(0.5 * exp2(lod)), (high - low) * 0.5);
+  return clamp(sharp, low + inset, high - inset);
 }
 // must match packMaterialClip in clip/clip.ts
 fn clipOf(materialClip: u32) -> u32 {
@@ -307,8 +329,9 @@ fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> Vertex
     let top = select(a, b, corner.x > 0.0);
     let bottom = select(d, c, corner.x > 0.0);
     let point = select(top, bottom, corner.y > 0.0);
-    out.position = pixelToClip(worldToPixel(a, point - a));
-    out.clipPoint = snapAnchor(a) + point - a;
+    let anchor = snapAnchor(a);
+    out.position = pixelToClip(worldToPixel(anchor, point - a));
+    out.clipPoint = anchor + point - a;
     out.local = point - a;
     out.halfSize = vec2f(length(b - a), length(d - a)) * 0.5;
     out.quadB = b - a;
@@ -317,13 +340,16 @@ fn vertexMain(@builtin(vertex_index) index: u32, instance: InstanceIn) -> Vertex
   } else {
     let halfSize = instance.size * 0.5;
     // one render texel of margin, so the antialiased edge is not cut by the quad
-    let pad = 1.0 / camera.zoom;
+    let pad = 1.0 / camera.scale;
     let local = corner * (halfSize + pad);
     let c = cos(instance.rotation);
     let s = sin(instance.rotation);
     let rotated = vec2f(local.x * c - local.y * s, local.x * s + local.y * c);
-    out.position = pixelToClip(worldToPixel(instance.position, halfSize + rotated));
-    out.clipPoint = snapAnchor(instance.position) + halfSize + rotated;
+    // letters keep their layout positions, snapping each would break the spacing when zoomed in
+    let glyph = instance.shape == SHAPE_MTSDF || instance.shape == SHAPE_MTSDF_OUTLINE;
+    let anchor = select(snapAnchor(instance.position), instance.position, glyph);
+    out.position = pixelToClip(worldToPixel(anchor, halfSize + rotated));
+    out.clipPoint = anchor + halfSize + rotated;
     out.local = local;
     out.halfSize = halfSize;
   }
@@ -404,18 +430,23 @@ fn fragmentMain(in: VertexOut) -> FragmentOut {
   let fill = clamp(0.5 - (dist + outlineWidth) / aa, 0.0, 1.0);
   // derivatives must stay outside branches
   let glyphAa = max(fwidth(glyphDist), 0.0001);
+  let texelPosition = in.uvRect.xy + uv01 * in.uvRect.zw;
+  let texelDx = dpdx(texelPosition);
+  let texelDy = dpdy(texelPosition);
+  // explicit level, so the samples below may sit in branches; the ui atlas has no mips
+  let lod = 0.5 * log2(max(max(dot(texelDx, texelDx), dot(texelDy, texelDy)), 1.0));
+  let texelUv = sharpTexel(texelPosition, abs(texelDx) + abs(texelDy), in.uvRect, lod);
 
-  // textures have no mips, so the level sample works inside a branch
   var texel: vec4f;
   if ((in.layer & UI_ATLAS) != 0u) {
     // the ui array is plain rgba8unorm, unlike the srgb albedo it needs decoding here
     let layer = in.layer & ~UI_ATLAS;
-    let uv = (in.uvRect.xy + uv01 * in.uvRect.zw) / vec2f(textureDimensions(uiAtlas, 0));
+    let uv = texelUv / vec2f(textureDimensions(uiAtlas, 0));
     texel = premultiply(inputColor(textureSampleLevel(uiAtlas, texSampler, uv, layer, 0.0)));
   } else {
-    let uv = (in.uvRect.xy + uv01 * in.uvRect.zw) / vec2f(textureDimensions(albedo, 0));
-    // albedo is an srgb texture, sampling already returns linear
-    texel = premultiply(textureSampleLevel(albedo, texSampler, uv, in.layer, 0.0));
+    let uv = texelUv / vec2f(textureDimensions(albedo, 0));
+    // albedo is srgb and premultiplied at load: sampling returns linear premultiplied
+    texel = textureSampleLevel(albedo, texSampler, uv, in.layer, lod);
   }
   if (glyph) {
     let covered = clamp(0.5 - glyphDist / glyphAa, 0.0, 1.0);
@@ -449,7 +480,7 @@ fn fragmentMain(in: VertexOut) -> FragmentOut {
   let color = material(input);
   if (opaquePass) {
     // a mostly empty pixel must not write depth, or it hides what lies behind its soft edge
-    if (coverage * color.a < 0.5) {
+    if (coverage * min(color.a * (1.0 + lod * MIP_ALPHA_SCALE), 1.0) < 0.5) {
       discard;
     }
     // color is premultiplied, undo it: opaque writes full alpha, not a darkened edge

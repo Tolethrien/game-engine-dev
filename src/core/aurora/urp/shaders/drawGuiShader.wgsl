@@ -509,8 +509,8 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4f {
     texel = premultiply(inputColor(textureSampleLevel(uiAtlas, texSampler, uv, layer, 0.0)));
   } else {
     let uv = (in.uvRect.xy + uv01 * in.uvRect.zw) / vec2f(textureDimensions(albedo, 0));
-    // albedo is an srgb texture, sampling already returns linear
-    texel = premultiply(textureSampleLevel(albedo, texSampler, uv, in.layer, 0.0));
+    // albedo is srgb and premultiplied at load: sampling returns linear premultiplied
+    texel = textureSampleLevel(albedo, texSampler, uv, in.layer, 0.0);
   }
   if (glyph) {
     // mtsdf has no coverage channel, it comes from the distance

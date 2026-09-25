@@ -18,6 +18,9 @@ import type { AgxLook, BloomProps, ToneMapMode } from "./draw/drawTypes";
 import ScreenEffect from "./effects/screenEffect";
 export type SortMode = "none" | "y" | "layer" | "y+x" | "y+x+z";
 export type SortAnchor = "top" | "center" | "bottom";
+// "world": shapes sit on whole world units (sprite texels) and the camera on whole render
+// texels, pixel art stays crisp; "none": everything subpixel, smooth motion when zoomed in
+export type PixelSnap = "world" | "none";
 
 export interface SortProps {
   sortMode: SortMode;
@@ -35,6 +38,7 @@ export interface ToneMapProps {
   look: AgxLook;
 }
 export interface URPProps extends SortProps {
+  pixelSnap: PixelSnap;
   toneMapping: ToneMapProps;
   // start value, Light.setAmbient({ enabled }) changes it live
   lighting: { enabled: boolean };
@@ -46,6 +50,7 @@ const BASE_CONFIG: URPProps = {
   sortAnchor: "center",
   step: { x: 1, y: 1, z: 1 },
   zRange: [0, 255],
+  pixelSnap: "world",
   toneMapping: { mode: "none", exposure: 0, look: "none" },
   lighting: { enabled: true },
   bloom: { ...BLOOM_DEFAULTS },
@@ -89,7 +94,7 @@ export default class URP extends RenderPreset<URPProps> {
   passes() {
     return [
       new WorldPass(this.config),
-      new LightPass(),
+      new LightPass(this.config.pixelSnap),
       new EffectPass("world"),
       new LightCompositePass(),
       new BloomPass(),
